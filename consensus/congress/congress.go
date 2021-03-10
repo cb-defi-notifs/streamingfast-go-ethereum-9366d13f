@@ -657,7 +657,7 @@ func (c *Congress) trySendBlockReward(chain consensus.ChainHeaderReader, header 
 	nonce := state.GetNonce(header.Coinbase)
 	msg := types.NewMessage(header.Coinbase, &validatorsContractAddr, nonce, fee, math.MaxUint64, new(big.Int), data, true)
 
-	if _, _, _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
+	if _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
 		return err
 	}
 
@@ -740,7 +740,7 @@ func (c *Congress) initializeSystemContracts(chain consensus.ChainHeaderReader, 
 		nonce := state.GetNonce(header.Coinbase)
 		msg := types.NewMessage(header.Coinbase, &contract.addr, nonce, new(big.Int), math.MaxUint64, new(big.Int), data, true)
 
-		if _, _, _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
+		if _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
 			return err
 		}
 	}
@@ -770,7 +770,7 @@ func (c *Congress) getTopValidators(chain consensus.ChainHeaderReader, header *t
 
 	// use parent
 	//deepmind: This is a read only call, this is why it's not instrumented
-	result, _, _, err := executeMsg(msg, statedb, parent, newChainContext(chain, c), c.chainConfig, deepmind.NoOpContext)
+	result, err := executeMsg(msg, statedb, parent, newChainContext(chain, c), c.chainConfig, deepmind.NoOpContext)
 	if err != nil {
 		return []common.Address{}, err
 	}
@@ -804,57 +804,10 @@ func (c *Congress) updateValidators(vals []common.Address, chain consensus.Chain
 	nonce := state.GetNonce(header.Coinbase)
 	msg := types.NewMessage(header.Coinbase, &validatorsContractAddr, nonce, new(big.Int), math.MaxUint64, new(big.Int), data, true)
 
-	var txHash common.Hash
-	if dmContext.Enabled() {
-		sha := sha3.NewLegacyKeccak256().(crypto.KeccakState)
-		sha.Reset()
-
-		if err := rlp.Encode(sha, []interface{}{header.Number.Uint64(), msg}); err != nil {
-			return err
-		}
-		if _, err := sha.Read(txHash[:]); err != nil {
-			return err
-		}
-
-		dmContext.StartTransactionRaw(
-			txHash,
-			msg.To(),
-			msg.Value(),
-			new(big.Int).Bytes(), new(big.Int).Bytes(), new(big.Int).Bytes(),
-			msg.Gas(),
-			msg.GasPrice(),
-			msg.Nonce(),
-			msg.Data(),
-		)
-		dmContext.RecordTrxFrom(msg.From())
-	}
-
-	_, vmenv, leftOverGas, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext)
+	_, err = executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext)
 	if err != nil {
 		log.Error("Can't update validators to contract", "err", err)
 		return err
-	}
-
-	if dmContext.Enabled() {
-		gasUsed := msg.Gas() - leftOverGas
-		cumulativeGasUsed := dmContext.CumulativeGasUsed() + gasUsed
-
-		//TODO: What to put in this Receipt
-		receipt := types.NewReceipt(nil, err != nil, cumulativeGasUsed)
-		receipt.TxHash = txHash
-		receipt.GasUsed = msg.Gas() - leftOverGas
-
-		// if the transaction created a contract, store the creation address in the receipt.
-		if msg.To() == nil {
-			receipt.ContractAddress = crypto.CreateAddress(vmenv.Context.Origin, header.Number.Uint64())
-		}
-		// Set the receipt logs and create a bloom for filtering
-		receipt.Logs = state.GetLogs(txHash)
-		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
-		receipt.BlockHash = header.Hash()
-		receipt.BlockNumber = header.Number
-		receipt.TransactionIndex = dmContext.LastTransactionIndex() + 1
-		dmContext.EndTransaction(receipt)
 	}
 
 	return nil
@@ -872,7 +825,7 @@ func (c *Congress) punishValidator(val common.Address, chain consensus.ChainHead
 	// call contract
 	nonce := state.GetNonce(header.Coinbase)
 	msg := types.NewMessage(header.Coinbase, &punishContractAddr, nonce, new(big.Int), math.MaxUint64, new(big.Int), data, true)
-	if _, _, _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
+	if _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
 		log.Error("Can't punish validator", "err", err)
 		return err
 	}
@@ -892,7 +845,7 @@ func (c *Congress) decreaseMissedBlocksCounter(chain consensus.ChainHeaderReader
 	// call contract
 	nonce := state.GetNonce(header.Coinbase)
 	msg := types.NewMessage(header.Coinbase, &punishContractAddr, nonce, new(big.Int), math.MaxUint64, new(big.Int), data, true)
-	if _, _, _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
+	if _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
 		log.Error("Can't decrease missed blocks counter for validator", "err", err)
 		return err
 	}
