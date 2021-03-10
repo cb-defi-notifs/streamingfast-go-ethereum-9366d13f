@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -60,6 +61,7 @@ type StateTransition struct {
 	data       []byte
 	state      vm.StateDB
 	evm        *vm.EVM
+	dmContext  *deepmind.Context
 }
 
 // Message represents a message sent to a contract.
@@ -119,7 +121,7 @@ func IntrinsicGas(data []byte, contractCreation, isHomestead bool, isEIP2028 boo
 }
 
 // NewStateTransition initialises and returns a new state transition object.
-func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition {
+func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool, dmContext *deepmind.Context) *StateTransition {
 	return &StateTransition{
 		gp:       gp,
 		evm:      evm,
@@ -128,6 +130,8 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 		value:    msg.Value(),
 		data:     msg.Data(),
 		state:    evm.StateDB,
+
+		dmContext: dmContext,
 	}
 }
 
@@ -139,7 +143,7 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 // indicates a core error meaning that the message would always fail for that particular
 // state and would never be accepted within a block.
 func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool) ([]byte, uint64, bool, error) {
-	return NewStateTransition(evm, msg, gp).TransitionDb()
+	return NewStateTransition(evm, msg, gp, evm.DeepmindPrinter()).TransitionDb()
 }
 
 // to returns the recipient of the message.
@@ -150,9 +154,13 @@ func (st *StateTransition) to() common.Address {
 	return *st.msg.To()
 }
 
-func (st *StateTransition) useGas(amount uint64) error {
+func (st *StateTransition) useGas(amount uint64, reason deepmind.GasChangeReason) error {
 	if st.gas < amount {
 		return vm.ErrOutOfGas
+	}
+
+	if st.dmContext.Enabled() {
+		st.dmContext.RecordGasConsume(st.gas, amount, reason)
 	}
 	st.gas -= amount
 
@@ -173,7 +181,7 @@ func (st *StateTransition) buyGas() error {
 
 	st.initialGas = st.msg.Gas()
 	if !vm.UsingOVM {
-		st.state.SubBalance(st.msg.From(), mgval)
+		st.state.SubBalance(st.msg.From(), mgval, st.dmContext, deepmind.BalanceChangeReason("gas_buy"))
 	}
 	return nil
 }
@@ -230,7 +238,7 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 	if err != nil {
 		return nil, 0, false, err
 	}
-	if err = st.useGas(gas); err != nil {
+	if err = st.useGas(gas, deepmind.GasChangeReason("intrinsic_gas")); err != nil {
 		return nil, 0, false, err
 	}
 
@@ -259,7 +267,7 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 		// Increment the nonce for the next transaction
 		if !vm.UsingOVM {
 			// OVM_DISABLED
-			st.state.SetNonce(msg.From(), st.state.GetNonce(msg.From())+1)
+			st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1, st.dmContext)
 		}
 
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
@@ -274,7 +282,7 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 
 	if !vm.UsingOVM {
 		// OVM_DISABLED
-		st.state.AddBalance(st.evm.Coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice))
+		st.state.AddBalance(st.evm.Coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice), false, st.dmContext, deepmind.BalanceChangeReason("reward_transaction_fee"))
 	}
 	return ret, st.gasUsed(), vmerr != nil, err
 }
@@ -289,7 +297,7 @@ func (st *StateTransition) refundGas() {
 
 	// Return ETH for remaining gas, exchanged at the original rate.
 	remaining := new(big.Int).Mul(new(big.Int).SetUint64(st.gas), st.gasPrice)
-	st.state.AddBalance(st.msg.From(), remaining)
+	st.state.AddBalance(st.msg.From(), remaining, false, st.dmContext, deepmind.BalanceChangeReason("gas_refund"))
 
 	// Also return remaining gas to the block gas counter so it is
 	// available for the next transaction.

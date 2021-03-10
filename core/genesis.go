@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -265,7 +266,7 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 }
 
 // ApplyOvmStateToState applies the initial OVM state to a state object.
-func ApplyOvmStateToState(statedb *state.StateDB, stateDump *dump.OvmDump, l1XDomainMessengerAddress common.Address, l1ETHGatewayAddress common.Address, addrManagerOwnerAddress common.Address) {
+func ApplyOvmStateToState(statedb *state.StateDB, stateDump *dump.OvmDump, l1XDomainMessengerAddress common.Address, l1ETHGatewayAddress common.Address, addrManagerOwnerAddress common.Address, dmContext *deepmind.Context) {
 	if len(stateDump.Accounts) == 0 {
 		return
 	}
@@ -278,10 +279,10 @@ func ApplyOvmStateToState(statedb *state.StateDB, stateDump *dump.OvmDump, l1XDo
 	sort.Strings(acctKeys)
 	for _, acctKey := range acctKeys {
 		account := stateDump.Accounts[acctKey]
-		statedb.SetCode(account.Address, common.FromHex(account.Code))
-		statedb.SetNonce(account.Address, account.Nonce)
+		statedb.SetCode(account.Address, common.FromHex(account.Code), dmContext)
+		statedb.SetNonce(account.Address, account.Nonce, dmContext)
 		for key, val := range account.Storage {
-			statedb.SetState(account.Address, key, common.HexToHash(val))
+			statedb.SetState(account.Address, key, common.HexToHash(val), dmContext)
 		}
 	}
 	AddressManager, ok := stateDump.Accounts["Lib_AddressManager"]
@@ -289,14 +290,14 @@ func ApplyOvmStateToState(statedb *state.StateDB, stateDump *dump.OvmDump, l1XDo
 		// Set the owner of the address manager
 		ownerSlot := common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000")
 		ownerValue := common.BytesToHash(addrManagerOwnerAddress.Bytes())
-		statedb.SetState(AddressManager.Address, ownerSlot, ownerValue)
+		statedb.SetState(AddressManager.Address, ownerSlot, ownerValue, dmContext)
 		log.Info("Setting AddressManager Owner", "owner", addrManagerOwnerAddress.Hex())
 		// Set the storage slot associated with the cross domain messenger
 		// to the cross domain messenger address.
 		log.Info("Setting OVM_L1CrossDomainMessenger in AddressManager", "address", l1XDomainMessengerAddress.Hex())
 		l1MessengerSlot := common.HexToHash("0x515216935740e67dfdda5cf8e248ea32b3277787818ab59153061ac875c9385e")
 		l1MessengerValue := common.BytesToHash(l1XDomainMessengerAddress.Bytes())
-		statedb.SetState(AddressManager.Address, l1MessengerSlot, l1MessengerValue)
+		statedb.SetState(AddressManager.Address, l1MessengerSlot, l1MessengerValue, dmContext)
 	}
 	OVM_ETH, ok := stateDump.Accounts["OVM_ETH"]
 	if ok {
@@ -304,13 +305,15 @@ func ApplyOvmStateToState(statedb *state.StateDB, stateDump *dump.OvmDump, l1XDo
 		log.Info("Setting OVM_L1WETHGateway in OVM_ETH", "address", l1ETHGatewayAddress.Hex())
 		l1GatewaySlot := common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000008")
 		l1GatewayValue := common.BytesToHash(l1ETHGatewayAddress.Bytes())
-		statedb.SetState(OVM_ETH.Address, l1GatewaySlot, l1GatewayValue)
+		statedb.SetState(OVM_ETH.Address, l1GatewaySlot, l1GatewayValue, dmContext)
 	}
 }
 
 // ToBlock creates the genesis block and writes state of a genesis specification
 // to the given database (or discards it if nil).
 func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
+	dmContext := deepmind.MaybeSyncContext()
+
 	if db == nil {
 		db = rawdb.NewMemoryDatabase()
 	}
@@ -318,15 +321,15 @@ func (g *Genesis) ToBlock(db ethdb.Database) *types.Block {
 
 	if vm.UsingOVM {
 		// OVM_ENABLED
-		ApplyOvmStateToState(statedb, g.Config.StateDump, g.L1CrossDomainMessengerAddress, g.L1ETHGatewayAddress, g.AddressManagerOwnerAddress)
+		ApplyOvmStateToState(statedb, g.Config.StateDump, g.L1CrossDomainMessengerAddress, g.L1ETHGatewayAddress, g.AddressManagerOwnerAddress, dmContext)
 	}
 
 	for addr, account := range g.Alloc {
-		statedb.AddBalance(addr, account.Balance)
-		statedb.SetCode(addr, account.Code)
-		statedb.SetNonce(addr, account.Nonce)
+		statedb.AddBalance(addr, account.Balance, false, dmContext, deepmind.BalanceChangeReason("genesis_balance"))
+		statedb.SetCode(addr, account.Code, dmContext)
+		statedb.SetNonce(addr, account.Nonce, dmContext)
 		for key, value := range account.Storage {
-			statedb.SetState(addr, key, value)
+			statedb.SetState(addr, key, value, dmContext)
 		}
 	}
 	root := statedb.IntermediateRoot(false)

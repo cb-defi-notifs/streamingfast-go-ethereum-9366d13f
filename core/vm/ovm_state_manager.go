@@ -7,10 +7,11 @@ import (
 	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/log"
 )
 
-type stateManagerFunction func(*EVM, *Contract, map[string]interface{}) ([]interface{}, error)
+type stateManagerFunction func(*EVM, *Contract, map[string]interface{}, *deepmind.Context) ([]interface{}, error)
 
 var funcs = map[string]stateManagerFunction{
 	"owner":                                    owner,
@@ -33,7 +34,7 @@ var funcs = map[string]stateManagerFunction{
 	"commitPendingAccount":                     nativeFunctionVoid,
 }
 
-func callStateManager(input []byte, evm *EVM, contract *Contract) (ret []byte, err error) {
+func callStateManager(input []byte, evm *EVM, contract *Contract, dmContext *deepmind.Context) (ret []byte, err error) {
 	rawabi := evm.Context.OvmStateManager.ABI
 	abi := &rawabi
 
@@ -53,7 +54,7 @@ func callStateManager(input []byte, evm *EVM, contract *Contract) (ret []byte, e
 		return nil, fmt.Errorf("Native OVM_StateManager function not found for method '%s'", method.RawName)
 	}
 
-	outputArgs, err := fn(evm, contract, inputArgs)
+	outputArgs, err := fn(evm, contract, inputArgs, dmContext)
 	if err != nil {
 		return nil, fmt.Errorf("cannot execute state manager function: %w", err)
 	}
@@ -66,12 +67,12 @@ func callStateManager(input []byte, evm *EVM, contract *Contract) (ret []byte, e
 	return returndata, nil
 }
 
-func owner(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func owner(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	origin := evm.Context.Origin
 	return []interface{}{origin}, nil
 }
 
-func setAccountNonce(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func setAccountNonce(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	address, ok := args["_address"].(common.Address)
 	if !ok {
 		return nil, errors.New("Could not parse address arg in setAccountNonce")
@@ -80,11 +81,11 @@ func setAccountNonce(evm *EVM, contract *Contract, args map[string]interface{}) 
 	if !ok {
 		return nil, errors.New("Could not parse nonce arg in setAccountNonce")
 	}
-	evm.StateDB.SetNonce(address, nonce.Uint64())
+	evm.StateDB.SetNonce(address, nonce.Uint64(), dmContext)
 	return []interface{}{}, nil
 }
 
-func getAccountNonce(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func getAccountNonce(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	address, ok := args["_address"].(common.Address)
 	if !ok {
 		return nil, errors.New("Could not parse address arg in getAccountNonce")
@@ -93,7 +94,7 @@ func getAccountNonce(evm *EVM, contract *Contract, args map[string]interface{}) 
 	return []interface{}{new(big.Int).SetUint64(reflect.ValueOf(nonce).Uint())}, nil
 }
 
-func getAccountEthAddress(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func getAccountEthAddress(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	address, ok := args["_address"].(common.Address)
 	if !ok {
 		return nil, errors.New("Could not parse address arg in getAccountEthAddress")
@@ -101,7 +102,7 @@ func getAccountEthAddress(evm *EVM, contract *Contract, args map[string]interfac
 	return []interface{}{address}, nil
 }
 
-func getContractStorage(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func getContractStorage(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	address, ok := args["_contract"].(common.Address)
 	if !ok {
 		return nil, errors.New("Could not parse contract arg in getContractStorage")
@@ -116,7 +117,7 @@ func getContractStorage(evm *EVM, contract *Contract, args map[string]interface{
 	return []interface{}{val}, nil
 }
 
-func putContractStorage(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func putContractStorage(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	address, ok := args["_contract"].(common.Address)
 	if !ok {
 		return nil, errors.New("Could not parse address arg in putContractStorage")
@@ -136,7 +137,7 @@ func putContractStorage(evm *EVM, contract *Contract, args map[string]interface{
 	if evm.Context.EthCallSender == nil {
 		// save the value before
 		before := evm.StateDB.GetState(address, key)
-		evm.StateDB.SetState(address, key, val)
+		evm.StateDB.SetState(address, key, val, dmContext)
 		err := evm.StateDB.SetDiffKey(
 			evm.Context.BlockNumber,
 			address,
@@ -148,14 +149,14 @@ func putContractStorage(evm *EVM, contract *Contract, args map[string]interface{
 		}
 	} else {
 		// otherwise just do the db update
-		evm.StateDB.SetState(address, key, val)
+		evm.StateDB.SetState(address, key, val, dmContext)
 	}
 
 	log.Debug("Put contract storage", "address", address.Hex(), "key", key.Hex(), "val", val.Hex())
 	return []interface{}{}, nil
 }
 
-func testAndSetAccount(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func testAndSetAccount(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	address, ok := args["_address"].(common.Address)
 	if !ok {
 		return nil, errors.New("Could not parse address arg in putContractStorage")
@@ -175,11 +176,11 @@ func testAndSetAccount(evm *EVM, contract *Contract, args map[string]interface{}
 	return []interface{}{true}, nil
 }
 
-func testAndSetContractStorageLoaded(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func testAndSetContractStorageLoaded(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	return testAndSetContractStorage(evm, contract, args, false)
 }
 
-func testAndSetContractStorageChanged(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func testAndSetContractStorageChanged(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	return testAndSetContractStorage(evm, contract, args, true)
 }
 
@@ -210,7 +211,7 @@ func testAndSetContractStorage(evm *EVM, contract *Contract, args map[string]int
 	return []interface{}{true}, nil
 }
 
-func hasEmptyAccount(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func hasEmptyAccount(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	address, ok := args["_address"].(common.Address)
 	if !ok {
 		return nil, errors.New("Could not parse address arg in hasEmptyAccount")
@@ -224,11 +225,11 @@ func hasEmptyAccount(evm *EVM, contract *Contract, args map[string]interface{}) 
 	return []interface{}{true}, nil
 }
 
-func nativeFunctionTrue(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func nativeFunctionTrue(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	return []interface{}{true}, nil
 }
 
-func nativeFunctionVoid(evm *EVM, contract *Contract, args map[string]interface{}) ([]interface{}, error) {
+func nativeFunctionVoid(evm *EVM, contract *Contract, args map[string]interface{}, dmContext *deepmind.Context) ([]interface{}, error) {
 	return []interface{}{}, nil
 }
 

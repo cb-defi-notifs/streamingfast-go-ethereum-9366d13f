@@ -90,7 +90,7 @@ func NewContractCreation(nonce uint64, amount *big.Int, gasLimit uint64, gasPric
 	return newTransaction(nonce, nil, amount, gasLimit, gasPrice, data, l1MessageSender, l1BlockNumber, queueOrigin, SighashEIP155)
 }
 
-func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, l1MessageSender *common.Address, l1BlockNumber *big.Int, queueOrigin QueueOrigin, sighashType SignatureHashType) *Transaction {
+func NewBareTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, l1MessageSender *common.Address, l1BlockNumber *big.Int, queueOrigin QueueOrigin, sighashType SignatureHashType, v, r, s *big.Int) *Transaction {
 	if len(data) > 0 {
 		data = common.CopyBytes(data)
 	}
@@ -109,9 +109,9 @@ func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit 
 		Amount:       new(big.Int),
 		GasLimit:     gasLimit,
 		Price:        new(big.Int),
-		V:            new(big.Int),
-		R:            new(big.Int),
-		S:            new(big.Int),
+		V:            v,
+		R:            r,
+		S:            s,
 	}
 	if amount != nil {
 		d.Amount.Set(amount)
@@ -162,6 +162,10 @@ func (t *Transaction) SetL1BlockNumber(bn uint64) {
 		return
 	}
 	t.meta.L1BlockNumber = new(big.Int).SetUint64(bn)
+}
+
+func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, l1MessageSender *common.Address, l1BlockNumber *big.Int, queueOrigin QueueOrigin, sighashType SignatureHashType) *Transaction {
+	return NewBareTransaction(nonce, to, amount, gasLimit, gasPrice, data, l1MessageSender, l1BlockNumber, queueOrigin, sighashType, new(big.Int), new(big.Int), new(big.Int))
 }
 
 // ChainId returns which chain id this transaction was signed for (if at all)
@@ -337,6 +341,21 @@ func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 	}
 
 	return msg, err
+}
+
+func (tx *Transaction) AsMessageFrom(from common.Address) *Message {
+	msg := &Message{
+		nonce:      tx.data.AccountNonce,
+		gasLimit:   tx.data.GasLimit,
+		gasPrice:   new(big.Int).Set(tx.data.Price),
+		from:       from,
+		to:         tx.data.Recipient,
+		amount:     tx.data.Amount,
+		data:       tx.data.Payload,
+		checkNonce: true,
+	}
+
+	return msg
 }
 
 // WithSignature returns a new transaction with the given signature.

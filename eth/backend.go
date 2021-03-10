@@ -27,8 +27,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/ethereum/go-ethereum/rollup"
-
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -41,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/filters"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
@@ -54,6 +53,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/rollup"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -192,7 +192,12 @@ func New(ctx *node.ServiceContext, config *Config) (*Ethereum, error) {
 
 	// Save the diffdb under chaindata/diffdb
 	diffdbPath := filepath.Join(ctx.ResolvePath("chaindata"), "diffdb")
+	if deepmind.Enabled {
+		log.Info("Ensuring no prefetch is set to true for proper deep mind functionning")
+		cacheConfig.TrieCleanNoPrefetch = true
+	}
 	eth.blockchain, err = core.NewBlockChainWithDiffDb(chainDb, cacheConfig, chainConfig, eth.engine, vmConfig, eth.shouldPreserve, diffdbPath, config.DiffDbCache)
+
 	if err != nil {
 		return nil, err
 	}
