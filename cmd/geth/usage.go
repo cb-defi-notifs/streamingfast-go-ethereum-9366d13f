@@ -238,6 +238,10 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 			cli.HelpFlag,
 		},
 	},
+	{
+		Name:  "DEEP MIND",
+		Flags: debug.DeepMindFlags,
+	},
 }
 
 func init() {

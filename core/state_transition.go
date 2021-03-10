@@ -17,11 +17,11 @@
 package core
 
 import (
-
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/params"
 	"math"
 	"math/big"
@@ -45,19 +45,20 @@ The state transitioning model does all the necessary work to work out a valid ne
 6) Derive new state root
 */
 type StateTransition struct {
-	gp         *GasPool
-	msg        Message
-	gas        uint64
-	gasPrice   *big.Int
-	initialGas uint64
-	value      *big.Int
-	data       []byte
-	state      vm.StateDB
-	evm        *vm.EVM
+	gp          *GasPool
+	msg         Message
+	gas         uint64
+	gasPrice    *big.Int
+	initialGas  uint64
+	value       *big.Int
+	data        []byte
+	state       vm.StateDB
+	evm         *vm.EVM
 	isMeta      bool
 	feeAddress  common.Address
-	feePercent uint64 //meta transaction fee percent
+	feePercent  uint64 //meta transaction fee percent
 	realPayload []byte //the real transaction fee percent
+	dmContext   *deepmind.Context
 }
 
 // Message represents a message sent to a contract.
@@ -147,7 +148,7 @@ func IntrinsicGas(data []byte, contractCreation, isHomestead bool, isEIP2028 boo
 }
 
 // NewStateTransition initialises and returns a new state transition object.
-func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition {
+func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool, dmContext *deepmind.Context) *StateTransition {
 	return &StateTransition{
 		gp:       gp,
 		evm:      evm,
@@ -156,6 +157,8 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 		value:    msg.Value(),
 		data:     msg.Data(),
 		state:    evm.StateDB,
+
+		dmContext: dmContext,
 	}
 }
 
@@ -167,7 +170,7 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 // indicates a core error meaning that the message would always fail for that particular
 // state and would never be accepted within a block.
 func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool) (*ExecutionResult, error) {
-	return NewStateTransition(evm, msg, gp).TransitionDb()
+	return NewStateTransition(evm, msg, gp, evm.DeepmindPrinter()).TransitionDb()
 }
 
 // to returns the recipient of the message.
@@ -189,15 +192,15 @@ func (st *StateTransition) buyGas() error {
 	st.gas += st.msg.Gas()
 
 	st.initialGas = st.msg.Gas()
-	st.state.SubBalance(st.msg.From(), mgval)
+	st.state.SubBalance(st.msg.From(), mgval, st.dmContext, deepmind.BalanceChangeReason("gas_buy"))
 	return nil
 }
 
 func (st *StateTransition) buyGasMeta() error {
 
 	mgval := new(big.Int).Mul(new(big.Int).SetUint64(st.msg.Gas()), st.gasPrice)
-	mgFeeAddrVal := new(big.Int).Div(new(big.Int).Mul(mgval, new(big.Int).SetUint64(st.feePercent)), types.BIG10000) //value deduct from fee address
-	mgSelfVal := new(big.Int).Div(new(big.Int).Mul(mgval, new(big.Int).SetUint64(types.BIG10000.Uint64() - st.feePercent)), types.BIG10000) //value deduct from sender address
+	mgFeeAddrVal := new(big.Int).Div(new(big.Int).Mul(mgval, new(big.Int).SetUint64(st.feePercent)), types.BIG10000)                      //value deduct from fee address
+	mgSelfVal := new(big.Int).Div(new(big.Int).Mul(mgval, new(big.Int).SetUint64(types.BIG10000.Uint64()-st.feePercent)), types.BIG10000) //value deduct from sender address
 
 	if st.state.GetBalance(st.feeAddress).Cmp(mgFeeAddrVal) < 0 || st.state.GetBalance(st.msg.From()).Cmp(mgSelfVal) < 0 {
 		return ErrInsufficientFunds
@@ -208,8 +211,8 @@ func (st *StateTransition) buyGasMeta() error {
 	st.gas += st.msg.Gas()
 
 	st.initialGas = st.msg.Gas()
-	st.state.SubBalance(st.feeAddress, mgFeeAddrVal)
-	st.state.SubBalance(st.msg.From(), mgSelfVal)
+	st.state.SubBalance(st.feeAddress, mgFeeAddrVal, st.dmContext, deepmind.BalanceChangeReason("gas_buy"))
+	st.state.SubBalance(st.msg.From(), mgSelfVal, st.dmContext, deepmind.BalanceChangeReason("gas_buy"))
 	return nil
 }
 
@@ -286,6 +289,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	if err := st.preCheck(); err != nil {
 		return nil, err
 	}
+
 	msg := st.msg
 	sender := vm.AccountRef(msg.From())
 	homestead := st.evm.ChainConfig().IsHomestead(st.evm.BlockNumber)
@@ -299,6 +303,10 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	}
 	if st.gas < gas {
 		return nil, ErrIntrinsicGas
+	}
+
+	if st.dmContext.Enabled() {
+		st.dmContext.RecordGasConsume(st.gas, gas, deepmind.GasChangeReason("intrinsic_gas"))
 	}
 	st.gas -= gas
 
@@ -314,15 +322,15 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		ret, _, st.gas, vmerr = st.evm.Create(sender, st.data, st.gas, st.value)
 	} else {
 		// Increment the nonce for the next transaction
-		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1)
+		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1, st.dmContext)
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	}
 	st.refundGas()
 
 	if st.evm.ChainConfig().Congress != nil {
-		st.state.AddBalance(consensus.FeeRecoder, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice))
+		st.state.AddBalance(consensus.FeeRecoder, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice), false, st.dmContext, deepmind.BalanceChangeReason("reward_transaction_fee"))
 	} else {
-		st.state.AddBalance(st.evm.Coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice))
+		st.state.AddBalance(st.evm.Coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice), false, st.dmContext, deepmind.BalanceChangeReason("reward_transaction_fee"))
 	}
 
 	return &ExecutionResult{
@@ -345,12 +353,12 @@ func (st *StateTransition) refundGas() {
 
 	if st.isMeta {
 		mgFeeAddrVal := new(big.Int).Div(new(big.Int).Mul(remaining, new(big.Int).SetUint64(st.feePercent)), types.BIG10000)
-		mgSelfVal := new(big.Int).Div(new(big.Int).Mul(remaining, new(big.Int).SetUint64(types.BIG10000.Uint64() - st.feePercent)), types.BIG10000)
-		st.state.AddBalance(st.feeAddress, mgFeeAddrVal)
-		st.state.AddBalance(st.msg.From(), mgSelfVal)
+		mgSelfVal := new(big.Int).Div(new(big.Int).Mul(remaining, new(big.Int).SetUint64(types.BIG10000.Uint64()-st.feePercent)), types.BIG10000)
+		st.state.AddBalance(st.feeAddress, mgFeeAddrVal, false, st.dmContext, deepmind.BalanceChangeReason("gas_refund"))
+		st.state.AddBalance(st.msg.From(), mgSelfVal, false, st.dmContext, deepmind.BalanceChangeReason("gas_refund"))
 		st.data = st.realPayload
 	} else {
-		st.state.AddBalance(st.msg.From(), remaining)
+		st.state.AddBalance(st.msg.From(), remaining, false, st.dmContext, deepmind.BalanceChangeReason("gas_refund"))
 	}
 
 	// Also return remaining gas to the block gas counter so it is

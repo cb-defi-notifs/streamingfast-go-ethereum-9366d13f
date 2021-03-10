@@ -1,6 +1,7 @@
 package congress
 
 import (
+	"github.com/ethereum/go-ethereum/deepmind"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -48,16 +49,16 @@ func getInteractiveABI() map[string]abi.ABI {
 }
 
 // executeMsg executes transaction sent to system contracts.
-func executeMsg(msg core.Message, state *state.StateDB, header *types.Header, chainContext core.ChainContext, chainConfig *params.ChainConfig) (ret []byte, err error) {
+func executeMsg(msg core.Message, state *state.StateDB, header *types.Header, chainContext core.ChainContext, chainConfig *params.ChainConfig, dmContext *deepmind.Context) (ret []byte, evm *vm.EVM, leftOverGas uint64, err error) {
 	// Set gas price to zero
 	context := core.NewEVMContext(msg, header, chainContext, nil)
-	vmenv := vm.NewEVM(context, state, chainConfig, vm.Config{})
+	vmenv := vm.NewEVM(context, state, chainConfig, vm.Config{}, dmContext)
 
-	ret, _, err = vmenv.Call(vm.AccountRef(msg.From()), *msg.To(), msg.Data(), msg.Gas(), msg.Value())
+	ret, leftOverGas, err = vmenv.Call(vm.AccountRef(msg.From()), *msg.To(), msg.Data(), msg.Gas(), msg.Value())
 
 	if err != nil {
-		return []byte{}, err
+		return []byte{}, nil, 0, err
 	}
 
-	return ret, nil
+	return ret, vmenv, leftOverGas, nil
 }

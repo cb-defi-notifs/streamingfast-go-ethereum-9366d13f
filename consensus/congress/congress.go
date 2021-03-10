@@ -20,6 +20,7 @@ package congress
 import (
 	"bytes"
 	"errors"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"io"
 	"math"
 	"math/big"
@@ -549,31 +550,31 @@ func (c *Congress) Prepare(chain consensus.ChainHeaderReader, header *types.Head
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (c *Congress) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header) error {
+func (c *Congress) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, dmContext *deepmind.Context) error {
 	// Initialize all system contracts at block 1.
 	if header.Number.Cmp(common.Big1) == 0 {
-		if err := c.initializeSystemContracts(chain, header, state); err != nil {
+		if err := c.initializeSystemContracts(chain, header, state, dmContext); err != nil {
 			log.Error("Initialize system contracts failed", "err", err)
 			return err
 		}
 	}
 
 	if header.Difficulty.Cmp(diffInTurn) != 0 {
-		if err := c.tryPunishValidator(chain, header, state); err != nil {
+		if err := c.tryPunishValidator(chain, header, state, dmContext); err != nil {
 			return err
 		}
 	}
 
 	// execute block reward tx.
 	if len(txs) > 0 {
-		if err := c.trySendBlockReward(chain, header, state); err != nil {
+		if err := c.trySendBlockReward(chain, header, state, dmContext); err != nil {
 			return err
 		}
 	}
 
 	// do epoch thing at the end, because it will update active validators
 	if header.Number.Uint64()%c.config.Epoch == 0 {
-		newValidators, err := c.doSomethingAtEpoch(chain, header, state)
+		newValidators, err := c.doSomethingAtEpoch(chain, header, state, dmContext)
 		if err != nil {
 			return err
 		}
@@ -598,31 +599,31 @@ func (c *Congress) Finalize(chain consensus.ChainHeaderReader, header *types.Hea
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (c *Congress) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error) {
+func (c *Congress) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, dmContext *deepmind.Context) (*types.Block, error) {
 	// Initialize all system contracts at block 1.
 	if header.Number.Cmp(common.Big1) == 0 {
-		if err := c.initializeSystemContracts(chain, header, state); err != nil {
+		if err := c.initializeSystemContracts(chain, header, state, dmContext); err != nil {
 			panic(err)
 		}
 	}
 
 	// punish validator if necessary
 	if header.Difficulty.Cmp(diffInTurn) != 0 {
-		if err := c.tryPunishValidator(chain, header, state); err != nil {
+		if err := c.tryPunishValidator(chain, header, state, dmContext); err != nil {
 			panic(err)
 		}
 	}
 
 	// deposit block reward if any tx exists.
 	if len(txs) > 0 {
-		if err := c.trySendBlockReward(chain, header, state); err != nil {
+		if err := c.trySendBlockReward(chain, header, state, dmContext); err != nil {
 			panic(err)
 		}
 	}
 
 	// do epoch thing at the end, because it will update active validators
 	if header.Number.Uint64()%c.config.Epoch == 0 {
-		if _, err := c.doSomethingAtEpoch(chain, header, state); err != nil {
+		if _, err := c.doSomethingAtEpoch(chain, header, state, dmContext); err != nil {
 			panic(err)
 		}
 	}
@@ -635,16 +636,16 @@ func (c *Congress) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header
 	return types.NewBlock(header, txs, nil, receipts, new(trie.Trie)), nil
 }
 
-func (c *Congress) trySendBlockReward(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB) error {
+func (c *Congress) trySendBlockReward(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, dmContext *deepmind.Context) error {
 	fee := state.GetBalance(consensus.FeeRecoder)
 	if fee.Cmp(common.Big0) <= 0 {
 		return nil
 	}
 
 	// Miner will send tx to deposit block fees to contract, add to his balance first.
-	state.AddBalance(header.Coinbase, fee)
+	state.AddBalance(header.Coinbase, fee, false, dmContext, deepmind.BalanceChangeReason("reward_mine_block"))
 	// reset fee
-	state.SetBalance(consensus.FeeRecoder, common.Big0)
+	state.SetBalance(consensus.FeeRecoder, common.Big0, dmContext, deepmind.BalanceChangeReason("reward_fee_reset"))
 
 	method := "distributeBlockReward"
 	data, err := c.abi[validatorsContractName].Pack(method)
@@ -656,14 +657,14 @@ func (c *Congress) trySendBlockReward(chain consensus.ChainHeaderReader, header 
 	nonce := state.GetNonce(header.Coinbase)
 	msg := types.NewMessage(header.Coinbase, &validatorsContractAddr, nonce, fee, math.MaxUint64, new(big.Int), data, true)
 
-	if _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig); err != nil {
+	if _, _, _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (c *Congress) tryPunishValidator(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB) error {
+func (c *Congress) tryPunishValidator(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, dmContext *deepmind.Context) error {
 	number := header.Number.Uint64()
 	snap, err := c.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
@@ -680,7 +681,7 @@ func (c *Congress) tryPunishValidator(chain consensus.ChainHeaderReader, header 
 		}
 	}
 	if !signedRecently {
-		if err := c.punishValidator(outTurnValidator, chain, header, state); err != nil {
+		if err := c.punishValidator(outTurnValidator, chain, header, state, dmContext); err != nil {
 			return err
 		}
 	}
@@ -688,18 +689,18 @@ func (c *Congress) tryPunishValidator(chain consensus.ChainHeaderReader, header 
 	return nil
 }
 
-func (c *Congress) doSomethingAtEpoch(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB) ([]common.Address, error) {
+func (c *Congress) doSomethingAtEpoch(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, dmContext *deepmind.Context) ([]common.Address, error) {
 	newSortedValidators, err := c.getTopValidators(chain, header)
 	if err != nil {
 		return []common.Address{}, err
 	}
 
 	// update contract new validators if new set exists
-	if err := c.updateValidators(newSortedValidators, chain, header, state); err != nil {
+	if err := c.updateValidators(newSortedValidators, chain, header, state, dmContext); err != nil {
 		return []common.Address{}, err
 	}
 	//  decrease validator missed blocks counter at epoch
-	if err := c.decreaseMissedBlocksCounter(chain, header, state); err != nil {
+	if err := c.decreaseMissedBlocksCounter(chain, header, state, dmContext); err != nil {
 		return []common.Address{}, err
 	}
 
@@ -707,7 +708,7 @@ func (c *Congress) doSomethingAtEpoch(chain consensus.ChainHeaderReader, header 
 }
 
 // initializeSystemContracts initializes all system contracts.
-func (c *Congress) initializeSystemContracts(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB) error {
+func (c *Congress) initializeSystemContracts(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, dmContext *deepmind.Context) error {
 	snap, err := c.snapshot(chain, 0, header.ParentHash, nil)
 	if err != nil {
 		return err
@@ -739,7 +740,7 @@ func (c *Congress) initializeSystemContracts(chain consensus.ChainHeaderReader, 
 		nonce := state.GetNonce(header.Coinbase)
 		msg := types.NewMessage(header.Coinbase, &contract.addr, nonce, new(big.Int), math.MaxUint64, new(big.Int), data, true)
 
-		if _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig); err != nil {
+		if _, _, _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
 			return err
 		}
 	}
@@ -768,7 +769,8 @@ func (c *Congress) getTopValidators(chain consensus.ChainHeaderReader, header *t
 	msg := types.NewMessage(header.Coinbase, &validatorsContractAddr, 0, new(big.Int), math.MaxUint64, new(big.Int), data, false)
 
 	// use parent
-	result, err := executeMsg(msg, statedb, parent, newChainContext(chain, c), c.chainConfig)
+	//deepmind: This is a read only call, this is why it's not instrumented
+	result, _, _, err := executeMsg(msg, statedb, parent, newChainContext(chain, c), c.chainConfig, deepmind.NoOpContext)
 	if err != nil {
 		return []common.Address{}, err
 	}
@@ -789,7 +791,7 @@ func (c *Congress) getTopValidators(chain consensus.ChainHeaderReader, header *t
 	return validators, err
 }
 
-func (c *Congress) updateValidators(vals []common.Address, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB) error {
+func (c *Congress) updateValidators(vals []common.Address, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, dmContext *deepmind.Context) error {
 	// method
 	method := "updateActiveValidatorSet"
 	data, err := c.abi[validatorsContractName].Pack(method, vals, new(big.Int).SetUint64(c.config.Epoch))
@@ -801,15 +803,64 @@ func (c *Congress) updateValidators(vals []common.Address, chain consensus.Chain
 	// call contract
 	nonce := state.GetNonce(header.Coinbase)
 	msg := types.NewMessage(header.Coinbase, &validatorsContractAddr, nonce, new(big.Int), math.MaxUint64, new(big.Int), data, true)
-	if _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig); err != nil {
+
+	var txHash common.Hash
+	if dmContext.Enabled() {
+		sha := sha3.NewLegacyKeccak256().(crypto.KeccakState)
+		sha.Reset()
+
+		if err := rlp.Encode(sha, []interface{}{header.Number.Uint64(), msg}); err != nil {
+			return err
+		}
+		if _, err := sha.Read(txHash[:]); err != nil {
+			return err
+		}
+
+		dmContext.StartTransactionRaw(
+			txHash,
+			msg.To(),
+			msg.Value(),
+			new(big.Int).Bytes(), new(big.Int).Bytes(), new(big.Int).Bytes(),
+			msg.Gas(),
+			msg.GasPrice(),
+			msg.Nonce(),
+			msg.Data(),
+		)
+		dmContext.RecordTrxFrom(msg.From())
+	}
+
+	_, vmenv, leftOverGas, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext)
+	if err != nil {
 		log.Error("Can't update validators to contract", "err", err)
 		return err
+	}
+
+	if dmContext.Enabled() {
+		gasUsed := msg.Gas() - leftOverGas
+		cumulativeGasUsed := dmContext.CumulativeGasUsed() + gasUsed
+
+		//TODO: What to put in this Receipt
+		receipt := types.NewReceipt(nil, err != nil, cumulativeGasUsed)
+		receipt.TxHash = txHash
+		receipt.GasUsed = msg.Gas() - leftOverGas
+
+		// if the transaction created a contract, store the creation address in the receipt.
+		if msg.To() == nil {
+			receipt.ContractAddress = crypto.CreateAddress(vmenv.Context.Origin, header.Number.Uint64())
+		}
+		// Set the receipt logs and create a bloom for filtering
+		receipt.Logs = state.GetLogs(txHash)
+		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
+		receipt.BlockHash = header.Hash()
+		receipt.BlockNumber = header.Number
+		receipt.TransactionIndex = dmContext.LastTransactionIndex() + 1
+		dmContext.EndTransaction(receipt)
 	}
 
 	return nil
 }
 
-func (c *Congress) punishValidator(val common.Address, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB) error {
+func (c *Congress) punishValidator(val common.Address, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, dmContext *deepmind.Context) error {
 	// method
 	method := "punish"
 	data, err := c.abi[punishContractName].Pack(method, val)
@@ -821,7 +872,7 @@ func (c *Congress) punishValidator(val common.Address, chain consensus.ChainHead
 	// call contract
 	nonce := state.GetNonce(header.Coinbase)
 	msg := types.NewMessage(header.Coinbase, &punishContractAddr, nonce, new(big.Int), math.MaxUint64, new(big.Int), data, true)
-	if _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig); err != nil {
+	if _, _, _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
 		log.Error("Can't punish validator", "err", err)
 		return err
 	}
@@ -829,7 +880,7 @@ func (c *Congress) punishValidator(val common.Address, chain consensus.ChainHead
 	return nil
 }
 
-func (c *Congress) decreaseMissedBlocksCounter(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB) error {
+func (c *Congress) decreaseMissedBlocksCounter(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, dmContext *deepmind.Context) error {
 	// method
 	method := "decreaseMissedBlocksCounter"
 	data, err := c.abi[punishContractName].Pack(method, new(big.Int).SetUint64(c.config.Epoch))
@@ -841,7 +892,7 @@ func (c *Congress) decreaseMissedBlocksCounter(chain consensus.ChainHeaderReader
 	// call contract
 	nonce := state.GetNonce(header.Coinbase)
 	msg := types.NewMessage(header.Coinbase, &punishContractAddr, nonce, new(big.Int), math.MaxUint64, new(big.Int), data, true)
-	if _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig); err != nil {
+	if _, _, _, err := executeMsg(msg, state, header, newChainContext(chain, c), c.chainConfig, dmContext); err != nil {
 		log.Error("Can't decrease missed blocks counter for validator", "err", err)
 		return err
 	}
