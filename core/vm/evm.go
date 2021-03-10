@@ -26,6 +26,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -37,7 +38,7 @@ type (
 	// CanTransferFunc is the signature of a transfer guard function
 	CanTransferFunc func(StateDB, common.Address, *big.Int) bool
 	// TransferFunc is the signature of a transfer function
-	TransferFunc func(StateDB, common.Address, common.Address, *big.Int)
+	TransferFunc func(StateDB, common.Address, common.Address, *big.Int, *deepmind.Context)
 	// GetHashFunc returns the n'th block hash in the blockchain
 	// and is used by the BLOCKHASH EVM op code.
 	GetHashFunc func(uint64) common.Hash
@@ -143,11 +144,17 @@ type EVM struct {
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
+
+	dmContext *deepmind.Context
+}
+
+func (evm *EVM) DeepmindPrinter() *deepmind.Context {
+	return evm.dmContext
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
 // only ever be used *once*.
-func NewEVM(ctx Context, statedb StateDB, chainConfig *params.ChainConfig, vmConfig Config) *EVM {
+func NewEVM(ctx Context, statedb StateDB, chainConfig *params.ChainConfig, vmConfig Config, dmContext *deepmind.Context) *EVM {
 	evm := &EVM{
 		Context:      ctx,
 		StateDB:      statedb,
@@ -155,6 +162,7 @@ func NewEVM(ctx Context, statedb StateDB, chainConfig *params.ChainConfig, vmCon
 		chainConfig:  chainConfig,
 		chainRules:   chainConfig.Rules(ctx.BlockNumber),
 		interpreters: make([]Interpreter, 0, 1),
+		dmContext:    dmContext,
 	}
 
 	if chainConfig.IsEWASM(ctx.BlockNumber) {
@@ -224,11 +232,22 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				evm.vmConfig.Tracer.CaptureStart(caller.Address(), addr, false, input, gas, value)
 				evm.vmConfig.Tracer.CaptureEnd(ret, 0, 0, nil)
 			}
+
+			// DMLOG: do we want to instrument this call which does nothing?
 			return nil, gas, nil
 		}
-		evm.StateDB.CreateAccount(addr)
+
+		if evm.dmContext.Enabled() {
+			evm.dmContext.StartCall("CALL")
+		}
+		evm.StateDB.CreateAccount(addr, evm.dmContext)
+
+	} else {
+		if evm.dmContext.Enabled() {
+			evm.dmContext.StartCall("CALL")
+		}
 	}
-	evm.Transfer(evm.StateDB, caller.Address(), addr, value)
+	evm.Transfer(evm.StateDB, caller.Address(), addr, value, evm.dmContext)
 
 	// Capture the tracer start/end events in debug mode
 	if evm.vmConfig.Debug && evm.depth == 0 {
@@ -238,8 +257,13 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}(gas, time.Now())
 	}
 
+	if evm.dmContext.Enabled() {
+		// TODO: Shall we do something of interest with the fact that it's a pre-compiled contract? Most probably!
+		evm.dmContext.RecordCallParams("CALL", caller.Address(), addr, value, gas, input)
+	}
+
 	if isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas)
+		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.dmContext)
 	} else if isStatePrecompile {
 		ret, gas, err = sp.Run(evm.StateDB, evm.Context, caller.Address(), input, gas)
 	} else {
@@ -247,12 +271,15 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		// The contract is a scoped environment for this execution context only.
 		code := evm.StateDB.GetCode(addr)
 		if len(code) == 0 {
+			if evm.dmContext.Enabled() {
+				evm.dmContext.RecordCallWithoutCode()
+			}
 			ret, err = nil, nil // gas is unchanged
 		} else {
 			addrCopy := addr
 			// If the account has no code, we can abort here
 			// The depth-check is already done, and precompiles handled above
-			contract := NewContract(caller, AccountRef(addrCopy), value, gas)
+			contract := NewContract(caller, AccountRef(addrCopy), value, gas, evm.dmContext)
 			contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), code)
 			ret, err = run(evm, contract, input, false)
 			gas = contract.Gas
@@ -262,14 +289,30 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in homestead this also counts for code storage gas errors.
 	if err != nil {
+		if evm.dmContext.Enabled() {
+			evm.dmContext.RecordCallFailed(gas, err.Error())
+		}
+
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
+			if evm.dmContext.Enabled() {
+				evm.dmContext.RecordGasConsume(gas, gas, deepmind.FailedExecutionGasChangeReason)
+			}
 			gas = 0
+		} else {
+			if evm.dmContext.Enabled() {
+				evm.dmContext.RecordCallReverted()
+			}
 		}
 		// TODO: consider clearing up unused snapshots:
 		//} else {
 		//	evm.StateDB.DiscardSnapshot(snapshot)
 	}
+
+	if evm.dmContext.Enabled() {
+		evm.dmContext.EndCall(gas, ret)
+	}
+
 	return ret, gas, err
 }
 
@@ -295,26 +338,51 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
 		return nil, gas, ErrInsufficientBalance
 	}
+	if evm.dmContext.Enabled() {
+		evm.dmContext.StartCall("CALLCODE")
+	}
+
 	var snapshot = evm.StateDB.Snapshot()
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas)
+		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.dmContext)
 	} else {
 		addrCopy := addr
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
-		contract := NewContract(caller, AccountRef(caller.Address()), value, gas)
+		contract := NewContract(caller, AccountRef(caller.Address()), value, gas, evm.dmContext)
 		contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
+
+		if evm.dmContext.Enabled() {
+			evm.dmContext.RecordCallParams("CALLCODE", contract.Caller(), addr, value, gas, input)
+		}
+
 		ret, err = run(evm, contract, input, false)
 		gas = contract.Gas
 	}
 	if err != nil {
+		if evm.dmContext.Enabled() {
+			evm.dmContext.RecordCallFailed(gas, err.Error())
+		}
+
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
+			if evm.dmContext.Enabled() {
+				evm.dmContext.RecordGasConsume(gas, gas, deepmind.FailedExecutionGasChangeReason)
+			}
 			gas = 0
+		} else {
+			if evm.dmContext.Enabled() {
+				evm.dmContext.RecordCallReverted()
+			}
 		}
 	}
+
+	if evm.dmContext.Enabled() {
+		evm.dmContext.EndCall(gas, ret)
+	}
+
 	return ret, gas, err
 }
 
@@ -331,25 +399,51 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 	if evm.depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
 	}
+	if evm.dmContext.Enabled() {
+		evm.dmContext.StartCall("DELEGATE")
+	}
+
 	var snapshot = evm.StateDB.Snapshot()
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas)
+		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.dmContext)
 	} else {
 		addrCopy := addr
 		// Initialise a new contract and make initialise the delegate values
-		contract := NewContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
+		contract := NewContract(caller, AccountRef(caller.Address()), nil, gas, evm.dmContext).AsDelegate()
 		contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
+
+		if evm.dmContext.Enabled() {
+			// DMLOG: We use `contract.Caller()` as it is fixed with `AsDelegate()`.
+			evm.dmContext.RecordCallParams("DELEGATE", contract.Caller(), addr, contract.value, gas, input)
+		}
+
 		ret, err = run(evm, contract, input, false)
 		gas = contract.Gas
 	}
 	if err != nil {
+		if evm.dmContext.Enabled() {
+			evm.dmContext.RecordCallFailed(gas, err.Error())
+		}
+
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
+			if evm.dmContext.Enabled() {
+				evm.dmContext.RecordGasConsume(gas, gas, deepmind.FailedExecutionGasChangeReason)
+			}
 			gas = 0
+		} else {
+			if evm.dmContext.Enabled() {
+				evm.dmContext.RecordCallReverted()
+			}
 		}
 	}
+
+	if evm.dmContext.Enabled() {
+		evm.dmContext.EndCall(gas, ret)
+	}
+
 	return ret, gas, err
 }
 
@@ -365,6 +459,10 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	if evm.depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
 	}
+	if evm.dmContext.Enabled() {
+		evm.dmContext.StartCall("STATIC")
+	}
+
 	// We take a snapshot here. This is a bit counter-intuitive, and could probably be skipped.
 	// However, even a staticcall is considered a 'touch'. On mainnet, static calls were introduced
 	// after all empty accounts were deleted, so this is not required. However, if we omit this,
@@ -372,14 +470,20 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	// We could change this, but for now it's left for legacy reasons
 	var snapshot = evm.StateDB.Snapshot()
 
+	p, isPrecompile := evm.precompile(addr)
+
 	// We do an AddBalance of zero here, just in order to trigger a touch.
 	// This doesn't matter on Mainnet, where all empties are gone at the time of Byzantium,
 	// but is the correct thing to do and matters on other networks, in tests, and potential
 	// future scenarios
-	evm.StateDB.AddBalance(addr, big0)
+	evm.StateDB.AddBalance(addr, big0, isPrecompile, evm.dmContext, deepmind.IgnoredBalanceChangeReason)
 
-	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas)
+	if isPrecompile {
+		if evm.dmContext.Enabled() {
+			evm.dmContext.RecordCallParams("STATIC", caller.Address(), addr, deepmind.EmptyValue, gas, input)
+		}
+
+		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.dmContext)
 	} else {
 		// At this point, we use a copy of address. If we don't, the go compiler will
 		// leak the 'contract' to the outer scope, and make allocation for 'contract'
@@ -387,8 +491,13 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		addrCopy := addr
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
-		contract := NewContract(caller, AccountRef(addrCopy), new(big.Int), gas)
+		contract := NewContract(caller, AccountRef(addrCopy), new(big.Int), gas, evm.dmContext)
 		contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
+
+		if evm.dmContext.Enabled() {
+			evm.dmContext.RecordCallParams("STATIC", contract.Caller(), addr, deepmind.EmptyValue, gas, input)
+		}
+
 		// When an error was returned by the EVM or when setting the creation code
 		// above we revert to the snapshot and consume any gas remaining. Additionally
 		// when we're in Homestead this also counts for code storage gas errors.
@@ -396,11 +505,27 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		gas = contract.Gas
 	}
 	if err != nil {
+		if evm.dmContext.Enabled() {
+			evm.dmContext.RecordCallFailed(gas, err.Error())
+		}
+
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
+			if evm.dmContext.Enabled() {
+				evm.dmContext.RecordGasConsume(gas, gas, deepmind.FailedExecutionGasChangeReason)
+			}
 			gas = 0
+		} else {
+			if evm.dmContext.Enabled() {
+				evm.dmContext.RecordCallReverted()
+			}
 		}
 	}
+
+	if evm.dmContext.Enabled() {
+		evm.dmContext.EndCall(gas, ret)
+	}
+
 	return ret, gas, err
 }
 
@@ -426,28 +551,52 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	if !evm.CanTransfer(evm.StateDB, caller.Address(), value) {
 		return nil, common.Address{}, gas, ErrInsufficientBalance
 	}
+
+	if evm.dmContext.Enabled() {
+		evm.dmContext.StartCall("CREATE")
+		evm.dmContext.RecordCallParams("CREATE", caller.Address(), address, value, gas, nil)
+	}
+
 	nonce := evm.StateDB.GetNonce(caller.Address())
-	evm.StateDB.SetNonce(caller.Address(), nonce+1)
+	evm.StateDB.SetNonce(caller.Address(), nonce+1, evm.dmContext)
 
 	// Ensure there's no existing contract already at the designated address
 	contractHash := evm.StateDB.GetCodeHash(address)
 	if evm.StateDB.GetNonce(address) != 0 || (contractHash != (common.Hash{}) && contractHash != emptyCodeHash) {
+		if evm.dmContext.Enabled() {
+			evm.dmContext.RecordCallFailed(gas, ErrContractAddressCollision.Error())
+			evm.dmContext.EndCall(gas, nil)
+		}
 		return nil, common.Address{}, 0, ErrContractAddressCollision
 	}
+
 	// Create a new account on the state
 	snapshot := evm.StateDB.Snapshot()
-	evm.StateDB.CreateAccount(address)
+	evm.StateDB.CreateAccount(address, evm.dmContext)
 	if evm.chainRules.IsEIP158 {
-		evm.StateDB.SetNonce(address, 1)
+		evm.StateDB.SetNonce(address, 1, evm.dmContext)
 	}
-	evm.Transfer(evm.StateDB, caller.Address(), address, value)
+
+	evm.Transfer(evm.StateDB, caller.Address(), address, value, evm.dmContext)
 
 	// Initialise a new contract and set the code that is to be used by the EVM.
 	// The contract is a scoped environment for this execution context only.
-	contract := NewContract(caller, AccountRef(address), value, gas)
+	contract := NewContract(caller, AccountRef(address), value, gas, evm.dmContext)
 	contract.SetCodeOptionalHash(&address, codeAndHash)
 
 	if evm.vmConfig.NoRecursion && evm.depth > 0 {
+		if evm.dmContext.Enabled() {
+			// What to do with this related to our data model? This seems to results
+			// in the **non-execution** of the contract code when the depth is > 0 and
+			// no recursion option is set. We need to close the call, otherwise it will
+			// fucked up everything.
+			//
+			// Our data model for now will be an empty create call, however, here would mean
+			// no code execution (i.e. the constructor would have **not** being called). Would
+			// we want to show data at some point? Is it even possible on non-custom chain?
+			evm.dmContext.EndCall(contract.Gas, nil)
+		}
+
 		return nil, address, gas, nil
 	}
 
@@ -466,10 +615,19 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	// by the error checking condition below.
 	if err == nil && !maxCodeSizeExceeded {
 		createDataGas := uint64(len(ret)) * params.CreateDataGas
-		if contract.UseGas(createDataGas) {
-			evm.StateDB.SetCode(address, ret)
+
+		if contract.UseGas(createDataGas, deepmind.GasChangeReason("code_storage")) {
+			evm.StateDB.SetCode(address, ret, evm.dmContext)
 		} else {
 			err = ErrCodeStoreOutOfGas
+		}
+	}
+
+	if evm.dmContext.Enabled() {
+		if err != nil {
+			evm.dmContext.RecordCallFailed(contract.Gas, err.Error())
+		} else if maxCodeSizeExceeded {
+			evm.dmContext.RecordCallFailed(contract.Gas, ErrMaxCodeSizeExceeded.Error())
 		}
 	}
 
@@ -479,7 +637,11 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	if maxCodeSizeExceeded || (err != nil && (evm.chainRules.IsHomestead || err != ErrCodeStoreOutOfGas)) {
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
-			contract.UseGas(contract.Gas)
+			contract.UseGas(contract.Gas, deepmind.FailedExecutionGasChangeReason)
+		} else {
+			if evm.dmContext.Enabled() {
+				evm.dmContext.RecordCallReverted()
+			}
 		}
 	}
 	// Assign err if contract code size exceeds the max while the err is still empty.
@@ -489,8 +651,12 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	if evm.vmConfig.Debug && evm.depth == 0 {
 		evm.vmConfig.Tracer.CaptureEnd(ret, gas-contract.Gas, time.Since(start), err)
 	}
-	return ret, address, contract.Gas, err
 
+	if evm.dmContext.Enabled() {
+		evm.dmContext.EndCall(contract.Gas, nil)
+	}
+
+	return ret, address, contract.Gas, err
 }
 
 // Create creates a new contract using code as deployment code.

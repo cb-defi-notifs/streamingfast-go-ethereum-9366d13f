@@ -75,19 +75,19 @@ type txdataMarshaling struct {
 }
 
 func NewTransaction(nonce uint64, to common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte) *Transaction {
-	return newTransaction(nonce, &to, amount, gasLimit, gasPrice, data, new(big.Int), new(big.Int), new(big.Int))
+	return newTransaction(nonce, &to, amount, gasLimit, gasPrice, data)
 }
 
 func NewContractCreation(nonce uint64, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte) *Transaction {
-	return newTransaction(nonce, nil, amount, gasLimit, gasPrice, data, new(big.Int), new(big.Int), new(big.Int))
+	return newTransaction(nonce, nil, amount, gasLimit, gasPrice, data)
 }
 
 // NewRawTransaction creates a new transaction with the given deserialized fields.
 func NewRawTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, v, r, s *big.Int) *Transaction {
-	return newTransaction(nonce, to, amount, gasLimit, gasPrice, data, v, r, s)
+	return newTransaction(nonce, to, amount, gasLimit, gasPrice, data)
 }
 
-func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, v, r, s *big.Int) *Transaction {
+func NewBareTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, v, r, s *big.Int) *Transaction {
 	if len(data) > 0 {
 		data = common.CopyBytes(data)
 	}
@@ -112,6 +112,10 @@ func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit 
 		data: d,
 		time: time.Now(),
 	}
+}
+
+func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte) *Transaction {
+	return NewBareTransaction(nonce, to, amount, gasLimit, gasPrice, data, new(big.Int), new(big.Int), new(big.Int))
 }
 
 // ChainId returns which chain id this transaction was signed for (if at all)
@@ -248,6 +252,21 @@ func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 	var err error
 	msg.from, err = Sender(s, tx)
 	return msg, err
+}
+
+func (tx *Transaction) AsMessageFrom(from common.Address) *Message {
+	msg := &Message{
+		nonce:      tx.data.AccountNonce,
+		gasLimit:   tx.data.GasLimit,
+		gasPrice:   new(big.Int).Set(tx.data.Price),
+		from:       from,
+		to:         tx.data.Recipient,
+		amount:     tx.data.Amount,
+		data:       tx.data.Payload,
+		checkNonce: true,
+	}
+
+	return msg
 }
 
 // WithSignature returns a new transaction with the given signature.
