@@ -1,12 +1,13 @@
 package congress
 
 import (
+	"math/big"
+	"strings"
+
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/rlp"
 	"golang.org/x/crypto/sha3"
-	"math/big"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -59,9 +60,22 @@ func executeMsg(msg core.Message, state *state.StateDB, header *types.Header, ch
 		sha := sha3.NewLegacyKeccak256().(crypto.KeccakState)
 		sha.Reset()
 
-		if err := rlp.Encode(sha, []interface{}{header.Number.Uint64(), msg}); err != nil {
+		err := rlp.Encode(sha, []interface{}{
+			header.Number.Uint64(),
+			msg.Data(),
+			msg.CheckNonce(),
+			msg.Gas(),
+			msg.From(),
+			msg.GasPrice(),
+			msg.Nonce(),
+			msg.To(),
+			msg.Value(),
+		})
+
+		if err != nil {
 			return nil, err
 		}
+
 		if _, err := sha.Read(txHash[:]); err != nil {
 			return nil, err
 		}
