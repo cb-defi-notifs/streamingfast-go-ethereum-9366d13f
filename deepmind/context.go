@@ -227,6 +227,14 @@ func (ctx *Context) RecordFailedTransaction(err error) {
 	}
 }
 
+func (ctx *Context) RecordSkippedTransaction(err error) {
+	if ctx == nil {
+		return
+	}
+
+	ctx.printer.Print("SKIPPED_TRX", err.Error())
+}
+
 func (ctx *Context) EndTransaction(receipt *types.Receipt) {
 	if ctx == nil {
 		return
