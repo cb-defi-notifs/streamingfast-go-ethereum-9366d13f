@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -59,18 +60,53 @@ func (p *StateProcessor) Process(block *EvmBlock, statedb *state.StateDB, cfg vm
 		gp       = new(GasPool).AddGas(block.GasLimit)
 		skipped  = make([]uint, 0, len(block.Transactions))
 		totalFee = new(big.Int)
+		dmContext = deepmind.MaybeSyncContext()
+		ethBlock = block.EthBlock()
 	)
+
+	if dmContext.Enabled() {
+		dmContext.StartBlock(ethBlock)
+	}
+
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions {
 		statedb.Prepare(tx.Hash(), block.Hash, i)
-		receipt, _, fee, skip, err := ApplyTransaction(p.config, p.bc, nil, gp, statedb, block.Header(), tx, usedGas, cfg, strict)
+
+		if dmContext.Enabled() {
+			dmContext.StartTransaction(tx)
+		}
+
+		receipt, _, fee, skip, err := ApplyTransaction(p.config, p.bc, nil, gp, statedb, block.Header(), tx, usedGas, cfg, strict, dmContext)
 		if !strict && (skip || err != nil) {
+			if dmContext.Enabled() {
+				dmContext.RecordFailedTransaction(err)
+				dmContext.ExitBlock()
+			}
+
 			skipped = append(skipped, uint(i))
 			continue
 		}
+
+		if dmContext.Enabled() {
+			dmContext.EndTransaction(receipt)
+		}
+
 		totalFee.Add(totalFee, fee)
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
+	}
+
+	// Finalize block is a bit special since it can be enabled without the full deep mind sync.
+	// As such, if deep mind is enabled, we log it and us the deep mind context. Otherwise if
+	// block progress is enabled.
+	if dmContext.Enabled() {
+		dmContext.FinalizeBlock(ethBlock)
+	} else if deepmind.BlockProgressEnabled {
+		deepmind.SyncContext().FinalizeBlock(ethBlock)
+	}
+
+	if dmContext.Enabled() {
+		dmContext.EndBlock(ethBlock)
 	}
 
 	return receipts, allLogs, *usedGas, totalFee, skipped, nil
@@ -107,6 +143,7 @@ func ApplyTransaction(
 	usedGas *uint64,
 	cfg vm.Config,
 	strict bool,
+	dmContext *deepmind.Context,
 ) (
 	*types.Receipt,
 	uint64,
@@ -128,11 +165,15 @@ func ApplyTransaction(
 		}
 	}
 
+	if dmContext.Enabled() {
+		dmContext.RecordTrxFrom(msg.From())
+	}
+
 	// Create a new context to be used in the EVM environment
 	context := NewEVMContext(msg, header, bc, author)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
-	vmenv := vm.NewEVM(context, statedb, config, cfg)
+	vmenv := vm.NewEVM(context, statedb, config, cfg, dmContext)
 	// Apply the transaction to the current state (included in the env)
 	result, err := ApplyMessage(vmenv, msg, gp)
 	if err != nil {

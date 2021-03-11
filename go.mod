@@ -51,7 +51,6 @@ require (
 	github.com/tyler-smith/go-bip39 v1.0.2
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/uber/jaeger-lib v2.2.0+incompatible
-	go.uber.org/atomic v1.5.1 // indirect
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	golang.org/x/tools v0.0.0-20191109212701-97ad0ed33101 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
@@ -60,4 +59,4 @@ require (
 
 replace gopkg.in/urfave/cli.v1 => github.com/urfave/cli v1.20.0
 
-replace github.com/ethereum/go-ethereum => github.com/Fantom-Foundation/go-ethereum v1.9.22-ftm-0.1
+replace github.com/ethereum/go-ethereum => github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210310220449-56c82b6b0c15

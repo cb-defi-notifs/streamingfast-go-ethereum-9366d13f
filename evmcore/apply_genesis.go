@@ -20,6 +20,8 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/deepmind"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -35,17 +37,19 @@ func ApplyGenesis(db ethdb.Database, net *lachesis.Config) (*EvmBlock, error) {
 		return nil, ErrNoGenesis
 	}
 
+	var dmContext = deepmind.MaybeSyncContext()
+
 	// state
 	statedb, err := state.New(common.Hash{}, state.NewDatabase(db), nil)
 	if err != nil {
 		return nil, err
 	}
 	for addr, account := range net.Genesis.Alloc.Accounts {
-		statedb.AddBalance(addr, account.Balance)
-		statedb.SetCode(addr, account.Code)
-		statedb.SetNonce(addr, account.Nonce)
+		statedb.AddBalance(addr, account.Balance, false, dmContext, deepmind.BalanceChangeReason("genesis_balance"))
+		statedb.SetCode(addr, account.Code, dmContext)
+		statedb.SetNonce(addr, account.Nonce, dmContext)
 		for key, value := range account.Storage {
-			statedb.SetState(addr, key, value)
+			statedb.SetState(addr, key, value, dmContext)
 		}
 	}
 

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/deepmind"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -375,7 +377,7 @@ func (s *Service) processSfc(block *inter.Block, receipts types.Receipts, blockF
 		s.app.SetSfcStaker(stakerID, staker)
 		// write into SFC contract
 		position := sfcpos.Staker(stakerID)
-		statedb.SetState(sfc.ContractAddress, position.Status(), utils.U64to256(staker.Status))
+		statedb.SetState(sfc.ContractAddress, position.Status(), utils.U64to256(staker.Status), deepmind.NoOpContext)
 	}
 
 	if sealEpoch {
@@ -397,7 +399,7 @@ func (s *Service) processSfc(block *inter.Block, receipts types.Receipts, blockF
 				s.app.SetSfcStaker(it.StakerID, it.Staker)
 				// write into SFC contract
 				position := sfcpos.Staker(it.StakerID)
-				statedb.SetState(sfc.ContractAddress, position.Status(), utils.U64to256(it.Staker.Status))
+				statedb.SetState(sfc.ContractAddress, position.Status(), utils.U64to256(it.Staker.Status), deepmind.NoOpContext)
 			}
 		}
 
@@ -426,10 +428,10 @@ func (s *Service) processSfc(block *inter.Block, receipts types.Receipts, blockF
 
 			meritPos := epochPos.ValidatorMerit(it.StakerID)
 
-			statedb.SetState(sfc.ContractAddress, meritPos.StakeAmount(), utils.BigTo256(it.Staker.StakeAmount))
-			statedb.SetState(sfc.ContractAddress, meritPos.DelegatedMe(), utils.BigTo256(it.Staker.DelegatedMe))
-			statedb.SetState(sfc.ContractAddress, meritPos.BaseRewardWeight(), utils.BigTo256(baseRewardWeight))
-			statedb.SetState(sfc.ContractAddress, meritPos.TxRewardWeight(), utils.BigTo256(txRewardWeight))
+			statedb.SetState(sfc.ContractAddress, meritPos.StakeAmount(), utils.BigTo256(it.Staker.StakeAmount), deepmind.NoOpContext)
+			statedb.SetState(sfc.ContractAddress, meritPos.DelegatedMe(), utils.BigTo256(it.Staker.DelegatedMe), deepmind.NoOpContext)
+			statedb.SetState(sfc.ContractAddress, meritPos.BaseRewardWeight(), utils.BigTo256(baseRewardWeight), deepmind.NoOpContext)
+			statedb.SetState(sfc.ContractAddress, meritPos.TxRewardWeight(), utils.BigTo256(txRewardWeight), deepmind.NoOpContext)
 
 			totalBaseRewardWeight.Add(totalBaseRewardWeight, baseRewardWeight)
 			totalTxRewardWeight.Add(totalTxRewardWeight, txRewardWeight)
@@ -440,22 +442,22 @@ func (s *Service) processSfc(block *inter.Block, receipts types.Receipts, blockF
 		baseRewards := new(big.Int).Mul(big.NewInt(stats.Duration().Unix()), baseRewardPerSec)
 		rewards := new(big.Int).Add(baseRewards, stats.TotalFee)
 		totalSupply := new(big.Int).Add(s.app.GetTotalSupply(), rewards)
-		statedb.SetState(sfc.ContractAddress, sfcpos.CurrentSealedEpoch(), utils.U64to256(uint64(epoch)))
+		statedb.SetState(sfc.ContractAddress, sfcpos.CurrentSealedEpoch(), utils.U64to256(uint64(epoch)), deepmind.NoOpContext)
 		s.app.SetTotalSupply(totalSupply)
 
-		statedb.SetState(sfc.ContractAddress, epochPos.TotalBaseRewardWeight(), utils.BigTo256(totalBaseRewardWeight))
-		statedb.SetState(sfc.ContractAddress, epochPos.TotalTxRewardWeight(), utils.BigTo256(totalTxRewardWeight))
-		statedb.SetState(sfc.ContractAddress, epochPos.EpochFee(), utils.BigTo256(stats.TotalFee))
-		statedb.SetState(sfc.ContractAddress, epochPos.EndTime(), utils.U64to256(uint64(stats.End.Unix())))
-		statedb.SetState(sfc.ContractAddress, epochPos.Duration(), utils.U64to256(uint64(stats.Duration().Unix())))
-		statedb.SetState(sfc.ContractAddress, epochPos.BaseRewardPerSecond(), utils.BigTo256(baseRewardPerSec))
-		statedb.SetState(sfc.ContractAddress, epochPos.StakeTotalAmount(), utils.BigTo256(totalStake))
-		statedb.SetState(sfc.ContractAddress, epochPos.DelegationsTotalAmount(), utils.BigTo256(totalDelegated))
-		statedb.SetState(sfc.ContractAddress, epochPos.TotalSupply(), utils.BigTo256(totalSupply))
-		statedb.SetState(sfc.ContractAddress, sfcpos.CurrentSealedEpoch(), utils.U64to256(uint64(epoch)))
+		statedb.SetState(sfc.ContractAddress, epochPos.TotalBaseRewardWeight(), utils.BigTo256(totalBaseRewardWeight), deepmind.NoOpContext)
+		statedb.SetState(sfc.ContractAddress, epochPos.TotalTxRewardWeight(), utils.BigTo256(totalTxRewardWeight), deepmind.NoOpContext)
+		statedb.SetState(sfc.ContractAddress, epochPos.EpochFee(), utils.BigTo256(stats.TotalFee), deepmind.NoOpContext)
+		statedb.SetState(sfc.ContractAddress, epochPos.EndTime(), utils.U64to256(uint64(stats.End.Unix())), deepmind.NoOpContext)
+		statedb.SetState(sfc.ContractAddress, epochPos.Duration(), utils.U64to256(uint64(stats.Duration().Unix())), deepmind.NoOpContext)
+		statedb.SetState(sfc.ContractAddress, epochPos.BaseRewardPerSecond(), utils.BigTo256(baseRewardPerSec), deepmind.NoOpContext)
+		statedb.SetState(sfc.ContractAddress, epochPos.StakeTotalAmount(), utils.BigTo256(totalStake), deepmind.NoOpContext)
+		statedb.SetState(sfc.ContractAddress, epochPos.DelegationsTotalAmount(), utils.BigTo256(totalDelegated), deepmind.NoOpContext)
+		statedb.SetState(sfc.ContractAddress, epochPos.TotalSupply(), utils.BigTo256(totalSupply), deepmind.NoOpContext)
+		statedb.SetState(sfc.ContractAddress, sfcpos.CurrentSealedEpoch(), utils.U64to256(uint64(epoch)), deepmind.NoOpContext)
 
 		// Add balance for SFC to pay rewards
-		statedb.AddBalance(sfc.ContractAddress, rewards)
+		statedb.AddBalance(sfc.ContractAddress, rewards, false, deepmind.NoOpContext, deepmind.IgnoredBalanceChangeReason)
 
 		// Select new validators
 		s.app.SetEpochValidators(epoch+1, s.GetActiveSfcStakers())

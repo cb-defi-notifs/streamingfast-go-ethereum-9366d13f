@@ -21,6 +21,8 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/ethereum/go-ethereum/deepmind"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -93,7 +95,7 @@ func (b *BlockGen) AddTxWithChain(bc DummyChain, tx *types.Transaction) {
 		b.SetCoinbase(common.Address{})
 	}
 	b.statedb.Prepare(tx.Hash(), common.Hash{}, len(b.txs))
-	receipt, _, _, _, err := ApplyTransaction(b.config, bc, &b.header.Coinbase, b.gasPool, b.statedb, b.header, tx, &b.header.GasUsed, vm.Config{}, false)
+	receipt, _, _, _, err := ApplyTransaction(b.config, bc, &b.header.Coinbase, b.gasPool, b.statedb, b.header, tx, &b.header.GasUsed, vm.Config{}, false, deepmind.NoOpContext)
 	if err != nil {
 		panic(err)
 	}

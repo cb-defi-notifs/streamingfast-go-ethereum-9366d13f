@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/ethdb"
 	notify "github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -317,12 +318,14 @@ func (b *EthAPIBackend) GetTd(blockHash common.Hash) *big.Int {
 }
 
 func (b *EthAPIBackend) GetEVM(ctx context.Context, msg evmcore.Message, state *state.StateDB, header *evmcore.EvmHeader) (*vm.EVM, func() error, error) {
-	state.SetBalance(msg.From(), math.MaxBig256)
+	state.SetBalance(msg.From(), math.MaxBig256, deepmind.NoOpContext, deepmind.IgnoredBalanceChangeReason)
 	vmError := func() error { return nil }
 
 	context := evmcore.NewEVMContext(msg, header, b.state, nil)
 	config := b.ChainConfig()
-	return vm.NewEVM(context, state, config, vm.Config{}), vmError, nil
+
+	dmContext := deepmind.MaybeSyncContext()
+	return vm.NewEVM(context, state, config, vm.Config{}, dmContext), vmError, nil
 }
 
 func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
