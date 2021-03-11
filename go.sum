@@ -82,6 +82,10 @@ github.com/deckarep/golang-set v1.7.1 h1:SCQV0S6gTtp6itiFrTqI+pfmJ4LN85S1YzhDf9r
 github.com/deckarep/golang-set v1.7.1/go.mod h1:93vsz/8Wt4joVM7c2AVqh+YRMiUSc14yDtF28KmMOgQ=
 github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210310220449-56c82b6b0c15 h1:d/568wVSFNTXd4eZqL9fFik7eezWglguyeNOvlUph30=
 github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210310220449-56c82b6b0c15/go.mod h1:wEpbnNmY0HFMjLYv5MXXThU0aK9ciaBMPfsvM67BdWI=
+github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210311211226-a9dfd391c135 h1:QJTxCNDZBbMBSHfgwrtwHZ9GvrULOXCW5v9c1KTaKZA=
+github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210311211226-a9dfd391c135/go.mod h1:AZq+QsvyVqMINebYNJi0Q7lsVduyxutPNR2lvPYMox0=
+github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210311213534-0fc816ac382d h1:i7an40uQ1/unX0U65ptCALT1FdDzX8bgViJXbkZ/gn8=
+github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210311213534-0fc816ac382d/go.mod h1:AZq+QsvyVqMINebYNJi0Q7lsVduyxutPNR2lvPYMox0=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgryski/go-sip13 v0.0.0-20181026042036-e10d5fee7954/go.mod h1:vAd38F8PWV+bWy6jNmig1y/TA+kYO4g3RSRF0IAv0no=
 github.com/dlclark/regexp2 v1.2.0 h1:8sAhBGEM0dRWogWqWyQeIJnxjWO6oIjl8FKqREDsGfk=

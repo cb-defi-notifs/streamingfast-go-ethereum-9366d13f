@@ -54,14 +54,14 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 // transactions failed to execute due to insufficient gas it will return an error.
 func (p *StateProcessor) Process(block *EvmBlock, statedb *state.StateDB, cfg vm.Config, strict bool) (types.Receipts, []*types.Log, uint64, *big.Int, []uint, error) {
 	var (
-		receipts types.Receipts
-		usedGas  = new(uint64)
-		allLogs  []*types.Log
-		gp       = new(GasPool).AddGas(block.GasLimit)
-		skipped  = make([]uint, 0, len(block.Transactions))
-		totalFee = new(big.Int)
+		receipts  types.Receipts
+		usedGas   = new(uint64)
+		allLogs   []*types.Log
+		gp        = new(GasPool).AddGas(block.GasLimit)
+		skipped   = make([]uint, 0, len(block.Transactions))
+		totalFee  = new(big.Int)
 		dmContext = deepmind.MaybeSyncContext()
-		ethBlock = block.EthBlock()
+		ethBlock  = block.EthBlock()
 	)
 
 	if dmContext.Enabled() {
@@ -79,8 +79,7 @@ func (p *StateProcessor) Process(block *EvmBlock, statedb *state.StateDB, cfg vm
 		receipt, _, fee, skip, err := ApplyTransaction(p.config, p.bc, nil, gp, statedb, block.Header(), tx, usedGas, cfg, strict, dmContext)
 		if !strict && (skip || err != nil) {
 			if dmContext.Enabled() {
-				dmContext.RecordFailedTransaction(err)
-				dmContext.ExitBlock()
+				dmContext.RecordSkippedTransaction(err)
 			}
 
 			skipped = append(skipped, uint(i))
