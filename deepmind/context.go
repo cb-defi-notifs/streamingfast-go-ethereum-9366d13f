@@ -233,6 +233,9 @@ func (ctx *Context) RecordSkippedTransaction(err error) {
 	}
 
 	ctx.printer.Print("SKIPPED_TRX", err.Error())
+	if !ctx.inTransaction.CAS(true, false) {
+		panic("exiting a transaction while not already within a transaction scope")
+	}
 }
 
 func (ctx *Context) EndTransaction(receipt *types.Receipt) {
