@@ -4,6 +4,7 @@ package ethapi
 //go:generate go run github.com/golang/mock/mockgen -destination=account_mock_test.go -package=ethapi -mock_names Backend=AmBackend github.com/ethereum/go-ethereum/accounts Backend,Wallet
 
 import (
+	"github.com/ethereum/go-ethereum/deepmind"
 	"math/big"
 	"testing"
 	"time"
@@ -95,7 +96,7 @@ func initTestBackend(t *testing.T, b *MockBackend) {
 		Return(1).
 		AnyTimes()
 
-	b.EXPECT().GetBlock(gomock.Any(), gomock.Any()).
+	b.EXPECT().BlockByHash(gomock.Any(), gomock.Any()).
 		Return(&evmcore.EvmBlock{
 			EvmHeader: evmcore.EvmHeader{
 				Number:     big.NewInt(1),
@@ -183,14 +184,14 @@ func initTestBackend(t *testing.T, b *MockBackend) {
 			table.New(
 				memorydb.New(), []byte("evm1_"))))
 	stateDB, _ := state.New(common.HexToHash("0x0"), state.NewDatabase(db1), nil)
-	stateDB.SetNonce(common.Address{1}, 1)
-	stateDB.AddBalance(common.Address{1}, big.NewInt(10))
-	stateDB.SetCode(common.Address{1}, []byte{1, 2, 3})
-	b.EXPECT().StateAndHeaderByNumber(gomock.Any(), gomock.Any()).
+	stateDB.SetNonce(common.Address{1}, 1, deepmind.NoOpContext)
+	stateDB.AddBalance(common.Address{1}, big.NewInt(10), false, deepmind.NoOpContext, "test")
+	stateDB.SetCode(common.Address{1}, []byte{1, 2, 3}, deepmind.NoOpContext)
+	b.EXPECT().StateAndHeaderByNumberOrHash(gomock.Any(), gomock.Any()).
 		Return(stateDB, &evmcore.EvmHeader{}, nil).
 		Times(1)
 
-	evm := vm.NewEVM(vm.Context{}, stateDB, &params.ChainConfig{}, vm.Config{})
+	evm := vm.NewEVM(vm.Context{}, stateDB, &params.ChainConfig{}, vm.Config{}, deepmind.NoOpContext)
 	b.EXPECT().GetEVM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(evm, func() error { return nil }, nil).
 		Times(1)

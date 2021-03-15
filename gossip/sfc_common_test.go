@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"math"
 	"math/big"
 	"time"
@@ -325,17 +326,17 @@ func (env *testEnv) callContract(
 		call.Value = new(big.Int)
 	}
 	// Set infinite balance to the fake caller account.
-	from := statedb.GetOrNewStateObject(call.From)
-	from.SetBalance(big.NewInt(math.MaxInt64))
+	from := statedb.GetOrNewStateObject(call.From, false, deepmind.NoOpContext)
+	from.SetBalance(big.NewInt(math.MaxInt64), deepmind.NoOpContext, "test")
 
 	msg := callmsg{call}
 
 	evmContext := evmcore.NewEVMContext(msg, block.Header(), env.App.GetEvmStateReader(), &call.From)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
-	vmenv := vm.NewEVM(evmContext, statedb, env.App.config.Net.EvmChainConfig(), vm.Config{})
+	vmenv := vm.NewEVM(evmContext, statedb, env.App.config.Net.EvmChainConfig(), vm.Config{}, deepmind.NoOpContext)
 	gaspool := new(evmcore.GasPool).AddGas(math.MaxUint64)
-	res, err := evmcore.NewStateTransition(vmenv, msg, gaspool).TransitionDb()
+	res, err := evmcore.NewStateTransition(vmenv, msg, gaspool, deepmind.NoOpContext).TransitionDb()
 
 	ret, usedGas, failed = res.Return(), res.UsedGas, res.Failed()
 	return
