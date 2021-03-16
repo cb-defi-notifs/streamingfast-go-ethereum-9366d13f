@@ -4,10 +4,11 @@ package ethapi
 //go:generate go run github.com/golang/mock/mockgen -destination=account_mock_test.go -package=ethapi -mock_names Backend=AmBackend github.com/ethereum/go-ethereum/accounts Backend,Wallet
 
 import (
-	"github.com/ethereum/go-ethereum/deepmind"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/deepmind"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
