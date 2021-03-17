@@ -85,6 +85,8 @@ type Header struct {
 	Extra       []byte         `json:"extraData"        gencodec:"required"`
 	MixDigest   common.Hash    `json:"mixHash"`
 	Nonce       BlockNonce     `json:"nonce"`
+
+	hashOverride *common.Hash
 }
 
 // field type overrides for gencodec
@@ -98,9 +100,16 @@ type headerMarshaling struct {
 	Hash       common.Hash `json:"hash"` // adds call to Hash() in MarshalJSON
 }
 
+func (h *Header) OverrideHash(hash common.Hash) {
+	h.hashOverride = &hash
+}
+
 // Hash returns the block hash of the header, which is simply the keccak256 hash of its
-// RLP encoding.
+// RLP encoding. Some chains override this, haha
 func (h *Header) Hash() common.Hash {
+	if h.hashOverride != nil {
+		return *h.hashOverride
+	}
 	return rlpHash(h)
 }
 
@@ -251,11 +260,6 @@ func NewBlock(header *Header, txs []*Transaction, uncles []*Header, receipts []*
 	}
 
 	return b
-}
-
-// used for fantom or other chains that would override the block hash before marshalling, we use the memoize cache for this
-func (b *Block) OverrideHash(h common.Hash) {
-	b.hash.Store(h)
 }
 
 // NewBlockWithHeader creates a block with the given header data. The
