@@ -105,7 +105,7 @@ func (p *StateProcessor) Process(block *EvmBlock, statedb *state.StateDB, cfg vm
 	}
 
 	if dmContext.Enabled() {
-		dmContext.EndBlock(ethBlock)
+		dmContext.EndBlockOverrideHash(ethBlock, block.Hash)
 	}
 
 	return receipts, allLogs, *usedGas, totalFee, skipped, nil
