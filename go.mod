@@ -59,4 +59,4 @@ require (
 
 replace gopkg.in/urfave/cli.v1 => github.com/urfave/cli v1.20.0
 
-replace github.com/ethereum/go-ethereum => github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210317183953-b5f046fac4f2
+replace github.com/ethereum/go-ethereum => github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210317192741-468dd96fef11
