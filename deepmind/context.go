@@ -124,6 +124,20 @@ func (ctx *Context) ExitBlock() {
 	ctx.blockLogIndex = 0
 }
 
+func (ctx *Context) EndBlockOverrideHash(block *types.Block, hash common.Hash) {
+	ctx.ExitBlock()
+
+	block.OverrideHash(hash)
+	ctx.printer.Print("END_BLOCK",
+		Uint64(block.NumberU64()),
+		Uint64(uint64(block.Size())),
+		JSON(map[string]interface{}{
+			"header": block.Header(),
+			"uncles": block.Body().Uncles,
+		}),
+	)
+}
+
 func (ctx *Context) EndBlock(block *types.Block) {
 	ctx.ExitBlock()
 
