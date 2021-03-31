@@ -449,7 +449,7 @@ func TestTransactionNonceRecovery(t *testing.T) {
 	defer pool.Stop()
 
 	addr := crypto.PubkeyToAddress(key.PublicKey)
-	pool.currentState.SetNonce(addr, n)
+	pool.currentState.SetNonce(addr, n, deepmind.NoOpContext)
 	pool.currentState.AddBalance(addr, big.NewInt(100000000000000), false, deepmind.NoOpContext, "test")
 	<-pool.requestReset(nil, nil, nil)
 

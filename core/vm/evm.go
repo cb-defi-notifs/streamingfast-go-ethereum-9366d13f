@@ -48,7 +48,7 @@ type (
 )
 
 // run runs the given contract and takes care of running precompiles with a fallback to the byte code interpreter.
-func run(evm *EVM, contract *Contract, input []byte, readOnly bool, dmContext *deepmind.Context) ([]byte, error) {
+func run(evm *EVM, contract *Contract, input []byte, readOnly bool) ([]byte, error) {
 	if UsingOVM {
 		// OVM_ENABLED
 
@@ -88,7 +88,7 @@ func run(evm *EVM, contract *Contract, input []byte, readOnly bool, dmContext *d
 				log.Error("StateManager called by non ExecutionManager", "caller", contract.Caller().Hex())
 				return nil, ErrOvmSandboxEscape
 			}
-			return callStateManager(input, evm, contract, dmContext)
+			return callStateManager(input, evm, contract)
 		}
 	}
 
@@ -369,7 +369,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		evm.dmContext.RecordCallParams("CALL", contract.Caller(), addr, value, gas, input)
 	}
 
-	ret, err = run(evm, contract, input, false, evm.dmContext)
+	ret, err = run(evm, contract, input, false)
 
 	// When an error was returned by the EVM or when setting the creation code
 	// above we revert to the snapshot and consume any gas remaining. Additionally
@@ -480,6 +480,10 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 		evm.dmContext.StartCall("CALLCODE")
 	}
 
+	if evm.dmContext.Enabled() {
+		evm.dmContext.StartCall("CALLCODE")
+	}
+
 	var (
 		snapshot = evm.StateDB.Snapshot()
 		to       = AccountRef(caller.Address())
@@ -506,7 +510,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 		evm.dmContext.RecordCallParams("CALLCODE", contract.Caller(), addr, value, gas, input)
 	}
 
-	ret, err = run(evm, contract, input, false, evm.dmContext)
+	ret, err = run(evm, contract, input, false)
 	if err != nil {
 
 		if evm.dmContext.Enabled() {
@@ -562,7 +566,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 		evm.dmContext.RecordCallParams("DELEGATE", contract.Caller(), addr, contract.value, gas, input)
 	}
 
-	ret, err = run(evm, contract, input, false, evm.dmContext)
+	ret, err = run(evm, contract, input, false)
 	if err != nil {
 		if evm.dmContext.Enabled() {
 			evm.dmContext.RecordCallFailed(contract.Gas, err.Error())
@@ -637,7 +641,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	// When an error was returned by the EVM or when setting the creation code
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in Homestead this also counts for code storage gas errors.
-	ret, err = run(evm, contract, input, true, evm.dmContext)
+	ret, err = run(evm, contract, input, true)
 	if err != nil {
 		if evm.dmContext.Enabled() {
 			evm.dmContext.RecordCallFailed(contract.Gas, err.Error())
@@ -737,7 +741,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	}
 	start := time.Now()
 
-	ret, err := run(evm, contract, nil, false, evm.dmContext)
+	ret, err := run(evm, contract, nil, false)
 
 	// check whether the max code size has been exceeded
 	maxCodeSizeExceeded := evm.chainRules.IsEIP158 && len(ret) > params.MaxCodeSize

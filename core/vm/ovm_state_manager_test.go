@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/diffdb"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -34,9 +35,9 @@ var (
 func makeEnv(dbname string) (*diffdb.DiffDb, *EVM, TestData, *Contract) {
 	db, _ := diffdb.NewDiffDb(dbname, 1)
 	mock := &mockDb{db: *db}
-	env := NewEVM(Context{}, mock, params.TestChainConfig, Config{})
+	env := NewEVM(Context{}, mock, params.TestChainConfig, Config{}, deepmind.NoOpContext)
 	// re-use `dummyContractRef` from `logger_test.go`
-	contract := NewContract(&dummyContractRef{}, &dummyContractRef{}, new(big.Int), 0)
+	contract := NewContract(&dummyContractRef{}, &dummyContractRef{}, new(big.Int), 0, deepmind.NoOpContext)
 	testData := make(TestData)
 	return db, env, testData, contract
 }
@@ -205,30 +206,32 @@ func (mock *mockDb) SetDiffAccount(block *big.Int, address common.Address) error
 	return nil
 }
 
-func (mock *mockDb) CreateAccount(common.Address)                              {}
-func (mock *mockDb) SubBalance(common.Address, *big.Int)                       {}
-func (mock *mockDb) AddBalance(common.Address, *big.Int)                       {}
-func (mock *mockDb) GetBalance(common.Address) *big.Int                        { return big.NewInt(0) }
-func (mock *mockDb) GetNonce(common.Address) uint64                            { return 0 }
-func (mock *mockDb) SetNonce(common.Address, uint64)                           {}
-func (mock *mockDb) GetCodeHash(common.Address) common.Hash                    { return common.Hash{} }
-func (mock *mockDb) GetCode(common.Address) []byte                             { return []byte{} }
-func (mock *mockDb) SetCode(common.Address, []byte)                            {}
-func (mock *mockDb) GetCodeSize(common.Address) int                            { return 0 }
-func (mock *mockDb) AddRefund(uint64)                                          {}
-func (mock *mockDb) SubRefund(uint64)                                          {}
-func (mock *mockDb) GetRefund() uint64                                         { return 0 }
-func (mock *mockDb) GetCommittedState(common.Address, common.Hash) common.Hash { return common.Hash{} }
-func (mock *mockDb) GetState(common.Address, common.Hash) common.Hash          { return common.Hash{} }
-func (mock *mockDb) SetState(common.Address, common.Hash, common.Hash)         {}
-func (mock *mockDb) Suicide(common.Address) bool                               { return true }
-func (mock *mockDb) HasSuicided(common.Address) bool                           { return true }
-func (mock *mockDb) Exist(common.Address) bool                                 { return true }
-func (mock *mockDb) Empty(common.Address) bool                                 { return true }
-func (mock *mockDb) RevertToSnapshot(int)                                      {}
-func (mock *mockDb) Snapshot() int                                             { return 0 }
-func (mock *mockDb) AddLog(*types.Log)                                         {}
-func (mock *mockDb) AddPreimage(common.Hash, []byte)                           {}
+func (mock *mockDb) CreateAccount(common.Address, *deepmind.Context) {}
+func (mock *mockDb) SubBalance(common.Address, *big.Int, *deepmind.Context, deepmind.BalanceChangeReason) {
+}
+func (mock *mockDb) AddBalance(common.Address, *big.Int, bool, *deepmind.Context, deepmind.BalanceChangeReason) {
+}
+func (mock *mockDb) GetBalance(common.Address) *big.Int                                   { return big.NewInt(0) }
+func (mock *mockDb) GetNonce(common.Address) uint64                                       { return 0 }
+func (mock *mockDb) SetNonce(common.Address, uint64, *deepmind.Context)                   {}
+func (mock *mockDb) GetCodeHash(common.Address) common.Hash                               { return common.Hash{} }
+func (mock *mockDb) GetCode(common.Address) []byte                                        { return []byte{} }
+func (mock *mockDb) SetCode(common.Address, []byte, *deepmind.Context)                    {}
+func (mock *mockDb) GetCodeSize(common.Address) int                                       { return 0 }
+func (mock *mockDb) AddRefund(uint64)                                                     {}
+func (mock *mockDb) SubRefund(uint64)                                                     {}
+func (mock *mockDb) GetRefund() uint64                                                    { return 0 }
+func (mock *mockDb) GetCommittedState(common.Address, common.Hash) common.Hash            { return common.Hash{} }
+func (mock *mockDb) GetState(common.Address, common.Hash) common.Hash                     { return common.Hash{} }
+func (mock *mockDb) SetState(common.Address, common.Hash, common.Hash, *deepmind.Context) {}
+func (mock *mockDb) Suicide(common.Address, *deepmind.Context) bool                       { return true }
+func (mock *mockDb) HasSuicided(common.Address) bool                                      { return true }
+func (mock *mockDb) Exist(common.Address) bool                                            { return true }
+func (mock *mockDb) Empty(common.Address) bool                                            { return true }
+func (mock *mockDb) RevertToSnapshot(int)                                                 {}
+func (mock *mockDb) Snapshot() int                                                        { return 0 }
+func (mock *mockDb) AddLog(*types.Log, *deepmind.Context)                                 {}
+func (mock *mockDb) AddPreimage(common.Hash, []byte)                                      {}
 func (mock *mockDb) ForEachStorage(common.Address, func(common.Hash, common.Hash) bool) error {
 	return nil
 }
