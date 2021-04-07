@@ -39,7 +39,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/deepmind"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/filters"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
@@ -192,10 +191,6 @@ func New(ctx *node.ServiceContext, config *Config) (*Ethereum, error) {
 
 	// Save the diffdb under chaindata/diffdb
 	diffdbPath := filepath.Join(ctx.ResolvePath("chaindata"), "diffdb")
-	if deepmind.Enabled {
-		log.Info("Ensuring no prefetch is set to true for proper deep mind functionning")
-		cacheConfig.TrieCleanNoPrefetch = true
-	}
 	eth.blockchain, err = core.NewBlockChainWithDiffDb(chainDb, cacheConfig, chainConfig, eth.engine, vmConfig, eth.shouldPreserve, diffdbPath, config.DiffDbCache)
 
 	if err != nil {
