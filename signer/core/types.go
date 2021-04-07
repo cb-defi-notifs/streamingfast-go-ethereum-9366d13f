@@ -75,8 +75,9 @@ type SendTxArgs struct {
 	Value    hexutil.Big              `json:"value"`
 	Nonce    hexutil.Uint64           `json:"nonce"`
 	// We accept "data" and "input" for backwards-compatibility reasons.
-	Data              *hexutil.Bytes           `json:"data"`
-	Input             *hexutil.Bytes           `json:"input"`
+	Data  *hexutil.Bytes `json:"data"`
+	Input *hexutil.Bytes `json:"input"`
+
 	L1MessageSender   *common.MixedcaseAddress `json:"l1MessageSender"`
 	L1BlockNumber     *big.Int                 `json:"l1BlockNumber"`
 	SignatureHashType types.SignatureHashType  `json:"signatureHashType"`
@@ -109,5 +110,8 @@ func (args *SendTxArgs) toTransaction() *types.Transaction {
 		*l1BlockNumber = *args.L1BlockNumber
 	}
 
-	return types.NewTransaction(uint64(args.Nonce), args.To.Address(), (*big.Int)(&args.Value), (uint64)(args.Gas), (*big.Int)(&args.GasPrice), input, l1MessageSender, l1BlockNumber, args.QueueOrigin, args.SignatureHashType)
+	tx := types.NewTransaction(uint64(args.Nonce), args.To.Address(), (*big.Int)(&args.Value), (uint64)(args.Gas), (*big.Int)(&args.GasPrice), input)
+	txMeta := types.NewTransactionMeta(l1BlockNumber, 0, l1MessageSender, args.SignatureHashType, args.QueueOrigin, nil, nil, nil)
+	tx.SetTransactionMeta(txMeta)
+	return tx
 }

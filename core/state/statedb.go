@@ -75,9 +75,11 @@ type DiffDB interface {
 // * Contracts
 // * Accounts
 type StateDB struct {
-	db     Database
-	trie   Trie
+	db   Database
+	trie Trie
+
 	diffdb DiffDB
+
 	// This map holds 'live' objects, which will get modified while processing a state transition.
 	stateObjects        map[common.Address]*stateObject
 	stateObjectsPending map[common.Address]struct{} // State objects finalized but not yet written to the trie
@@ -273,8 +275,8 @@ func (s *StateDB) GetBalance(addr common.Address) *big.Int {
 }
 
 func (s *StateDB) GetOVMBalance(addr common.Address) *big.Int {
-	position := big.NewInt(3)
 	eth := common.HexToAddress("0x4200000000000000000000000000000000000006")
+	position := big.NewInt(5)
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write(common.LeftPadBytes(addr.Bytes(), 32))
 	hasher.Write(common.LeftPadBytes(position.Bytes(), 32))

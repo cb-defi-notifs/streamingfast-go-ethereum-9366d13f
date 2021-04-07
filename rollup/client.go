@@ -179,20 +179,21 @@ func enqueueToTransaction(enqueue *Enqueue) (*types.Transaction, error) {
 	data := *enqueue.Data
 
 	value := big.NewInt(0)
-	tx := types.NewTransaction(nonce, target, value, gasLimit, big.NewInt(0), data, &origin, blockNumber, types.QueueOriginL1ToL2, types.SighashEIP155)
+	tx := types.NewTransaction(nonce, target, value, gasLimit, big.NewInt(0), data)
 
 	// The index does not get a check as it is allowed to be nil in the context
 	// of an enqueue transaction that has yet to be included into the CTC
-	meta := types.TransactionMeta{
-		L1BlockNumber:     blockNumber,
-		L1Timestamp:       timestamp,
-		L1MessageSender:   &origin,
-		SignatureHashType: types.SighashEIP155,
-		QueueOrigin:       big.NewInt(int64(types.QueueOriginL1ToL2)),
-		Index:             enqueue.Index,
-		QueueIndex:        enqueue.QueueIndex,
-	}
-	tx.SetTransactionMeta(&meta)
+	txMeta := types.NewTransactionMeta(
+		blockNumber,
+		timestamp,
+		&origin,
+		types.SighashEIP155,
+		types.QueueOriginL1ToL2,
+		enqueue.Index,
+		enqueue.QueueIndex,
+		data,
+	)
+	tx.SetTransactionMeta(txMeta)
 
 	return tx, nil
 }
@@ -255,26 +256,25 @@ func transactionResponseToTransaction(res *TransactionResponse, signer *types.OV
 		gasLimit := res.Transaction.Decoded.GasLimit
 		gasPrice := new(big.Int).SetUint64(res.Transaction.Decoded.GasPrice)
 		data := res.Transaction.Decoded.Data
-		l1MessageSender := res.Transaction.Origin
-		l1BlockNumber := new(big.Int).SetUint64(res.Transaction.BlockNumber)
 
 		var tx *types.Transaction
 		if to == (common.Address{}) {
-			tx = types.NewContractCreation(nonce, value, gasLimit, gasPrice, data, l1MessageSender, l1BlockNumber, queueOrigin)
+			tx = types.NewContractCreation(nonce, value, gasLimit, gasPrice, data)
 		} else {
-			tx = types.NewTransaction(nonce, to, value, gasLimit, gasPrice, data, l1MessageSender, l1BlockNumber, queueOrigin, sighashType)
+			tx = types.NewTransaction(nonce, to, value, gasLimit, gasPrice, data)
 		}
 
-		meta := types.TransactionMeta{
-			L1BlockNumber:     new(big.Int).SetUint64(res.Transaction.BlockNumber),
-			L1Timestamp:       res.Transaction.Timestamp,
-			L1MessageSender:   res.Transaction.Origin,
-			SignatureHashType: sighashType,
-			QueueOrigin:       big.NewInt(int64(queueOrigin)),
-			Index:             &res.Transaction.Index,
-			QueueIndex:        res.Transaction.QueueIndex,
-		}
-		tx.SetTransactionMeta(&meta)
+		txMeta := types.NewTransactionMeta(
+			new(big.Int).SetUint64(res.Transaction.BlockNumber),
+			res.Transaction.Timestamp,
+			res.Transaction.Origin,
+			sighashType,
+			queueOrigin,
+			&res.Transaction.Index,
+			res.Transaction.QueueIndex,
+			res.Transaction.Data,
+		)
+		tx.SetTransactionMeta(txMeta)
 
 		r, s := res.Transaction.Decoded.Signature.R, res.Transaction.Decoded.Signature.S
 		sig := make([]byte, crypto.SignatureLength)
@@ -303,19 +303,18 @@ func transactionResponseToTransaction(res *TransactionResponse, signer *types.OV
 	gasLimit := res.Transaction.GasLimit
 	data := res.Transaction.Data
 	origin := res.Transaction.Origin
-	blockNumber := new(big.Int).SetUint64(res.Transaction.BlockNumber)
-	tx := types.NewTransaction(nonce, target, big.NewInt(0), gasLimit, big.NewInt(0), data, origin, blockNumber, types.QueueOriginL1ToL2, types.SighashEIP155)
-
-	meta := types.TransactionMeta{
-		L1BlockNumber:     blockNumber,
-		L1Timestamp:       res.Transaction.Timestamp,
-		L1MessageSender:   origin,
-		SignatureHashType: sighashType,
-		QueueOrigin:       big.NewInt(int64(queueOrigin)),
-		Index:             &res.Transaction.Index,
-		QueueIndex:        res.Transaction.QueueIndex,
-	}
-	tx.SetTransactionMeta(&meta)
+	tx := types.NewTransaction(nonce, target, big.NewInt(0), gasLimit, big.NewInt(0), data)
+	txMeta := types.NewTransactionMeta(
+		new(big.Int).SetUint64(res.Transaction.BlockNumber),
+		res.Transaction.Timestamp,
+		origin,
+		sighashType,
+		queueOrigin,
+		&res.Transaction.Index,
+		res.Transaction.QueueIndex,
+		res.Transaction.Data,
+	)
+	tx.SetTransactionMeta(txMeta)
 	return tx, nil
 }
 
@@ -333,7 +332,7 @@ func (c *Client) GetTransaction(index uint64) (*types.Transaction, error) {
 	}
 	res, ok := response.Result().(*TransactionResponse)
 	if !ok {
-		return nil, errors.New("")
+		return nil, fmt.Errorf("could not get tx with index %d", index)
 	}
 
 	return transactionResponseToTransaction(res, c.signer)

@@ -523,7 +523,7 @@ func (s *PublicBlockChainAPI) ChainId() *hexutil.Big {
 	return (*hexutil.Big)(s.b.ChainConfig().ChainID)
 }
 
-// SubmissionNumber returns the block number of the chain head.
+// BlockNumber returns the block number of the chain head.
 func (s *PublicBlockChainAPI) BlockNumber() hexutil.Uint64 {
 	header, _ := s.b.HeaderByNumber(context.Background(), rpc.LatestBlockNumber) // latest header should always be available
 	return hexutil.Uint64(header.Number.Uint64())
@@ -537,8 +537,7 @@ func (s *PublicBlockChainAPI) GetBalance(ctx context.Context, address common.Add
 	if state == nil || err != nil {
 		return nil, err
 	}
-	balance := state.GetOVMBalance(address)
-	return (*hexutil.Big)(balance), state.Error()
+	return (*hexutil.Big)(state.GetOVMBalance(address)), state.Error()
 }
 
 // Result structs for GetProof
@@ -552,10 +551,9 @@ type AccountResult struct {
 	StorageProof []StorageResult `json:"storageProof"`
 }
 type StorageResult struct {
-	Key     string       `json:"key"`
-	Value   *hexutil.Big `json:"value"`
-	Proof   []string     `json:"proof"`
-	Mutated bool         `json:"mutated"`
+	Key   string       `json:"key"`
+	Value *hexutil.Big `json:"value"`
+	Proof []string     `json:"proof"`
 }
 
 // Result structs for GetStateDiffProof
@@ -608,11 +606,6 @@ func (s *PublicBlockChainAPI) GetStateDiffProof(ctx context.Context, blockNrOrHa
 			return nil, err
 		}
 
-		// iterate over all the proofs and set their mutated bit
-		for i := range res.StorageProof {
-			res.StorageProof[i].Mutated = keys[i].Mutated
-		}
-
 		accounts = append(accounts, *res)
 	}
 
@@ -657,19 +650,9 @@ func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Addre
 			if storageError != nil {
 				return nil, storageError
 			}
-			// by default, the GetProof API does not return if a storage item
-			// was mutated or not.
-			storageProof[i] = StorageResult{
-				Key:   key,
-				Value: (*hexutil.Big)(state.GetState(address, common.HexToHash(key)).Big()),
-				Proof: common.ToHexArray(proof),
-			}
+			storageProof[i] = StorageResult{key, (*hexutil.Big)(state.GetState(address, common.HexToHash(key)).Big()), common.ToHexArray(proof)}
 		} else {
-			storageProof[i] = StorageResult{
-				Key:   key,
-				Value: &hexutil.Big{},
-				Proof: []string{},
-			}
+			storageProof[i] = StorageResult{key, &hexutil.Big{}, []string{}}
 		}
 	}
 
@@ -1072,12 +1055,72 @@ func (s *PublicBlockChainAPI) Call(ctx context.Context, args CallArgs, blockNrOr
 }
 
 func DoEstimateGas(ctx context.Context, b Backend, args CallArgs, blockNrOrHash rpc.BlockNumberOrHash, gasCap *big.Int) (hexutil.Uint64, error) {
-	// Retrieve the block to act as the gas ceiling
+	// // Binary search the gas requirement, as it may be higher than the amount used
+	// var (
+	// 	lo  uint64 = params.TxGas - 1
+	// 	hi  uint64
+	// 	cap uint64
+	// )
+	// if args.Gas != nil && uint64(*args.Gas) >= params.TxGas {
+	// 	hi = uint64(*args.Gas)
+	// } else {
+	// 	// Retrieve the block to act as the gas ceiling
+	// 	block, err := b.BlockByNumberOrHash(ctx, blockNrOrHash)
+	// 	if err != nil {
+	// 		return 0, err
+	// 	}
+	// 	hi = block.GasLimit()
+	// }
+	// if gasCap != nil && hi > gasCap.Uint64() {
+	// 	log.Warn("Caller gas above allowance, capping", "requested", hi, "cap", gasCap)
+	// 	hi = gasCap.Uint64()
+	// }
+	// cap = hi
+
+	// // Set sender address or use a default if none specified
+	// if args.From == nil {
+	// 	if wallets := b.AccountManager().Wallets(); len(wallets) > 0 {
+	// 		if accounts := wallets[0].Accounts(); len(accounts) > 0 {
+	// 			args.From = &accounts[0].Address
+	// 		}
+	// 	}
+	// }
+	// // Use zero-address if none other is available
+	// if args.From == nil {
+	// 	args.From = &common.Address{}
+	// }
+	// // Create a helper to check if a gas allowance results in an executable transaction
+	// executable := func(gas uint64) bool {
+	// 	args.Gas = (*hexutil.Uint64)(&gas)
+
+	// 	_, _, failed, err := DoCall(ctx, b, args, blockNrOrHash, nil, vm.Config{}, 0, gasCap)
+	// 	if err != nil || failed {
+	// 		return false
+	// 	}
+	// 	return true
+	// }
+	// // Execute the binary search and hone in on an executable gas limit
+	// for lo+1 < hi {
+	// 	mid := (hi + lo) / 2
+	// 	if !executable(mid) {
+	// 		lo = mid
+	// 	} else {
+	// 		hi = mid
+	// 	}
+	// }
+
+	// // Reject the transaction as invalid if it still fails at the highest allowance
+	// if hi == cap {
+	// 	if !executable(hi) {
+	// 		return 0, fmt.Errorf("gas required exceeds allowance (%d) or always failing transaction", cap)
+	// 	}
+	// }
+	// return hexutil.Uint64(hi), nil
+
 	block, err := b.BlockByNumberOrHash(ctx, blockNrOrHash)
 	if err != nil {
 		return 0, err
 	}
-	// For now always return the gas limit
 	return hexutil.Uint64(block.GasLimit() - 1), nil
 }
 
@@ -1252,16 +1295,13 @@ type RPCTransaction struct {
 	L1Timestamp      hexutil.Uint64  `json:"l1Timestamp"`
 	Index            *hexutil.Uint64 `json:"index"`
 	QueueIndex       *hexutil.Uint64 `json:"queueIndex"`
+	RawTransaction   hexutil.Bytes   `json:"rawTransaction"`
 }
 
 // newRPCTransaction returns a transaction that will serialize to the RPC
 // representation, with the given location metadata set (if available).
 func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64) *RPCTransaction {
-	// TODO(mark): the transaction must be protected
-	var signer types.Signer = types.FrontierSigner{}
-	if tx.Protected() {
-		signer = types.NewOVMSigner(tx.ChainId())
-	}
+	var signer types.Signer = types.NewOVMSigner(tx.ChainId())
 	from, _ := types.Sender(signer, tx)
 	v, r, s := tx.RawSignatureValues()
 
@@ -1285,6 +1325,7 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 	}
 
 	if meta := tx.GetMeta(); meta != nil {
+		result.RawTransaction = meta.RawTransaction
 		result.L1TxOrigin = meta.L1MessageSender
 		result.L1Timestamp = (hexutil.Uint64)(meta.L1Timestamp)
 		if meta.L1BlockNumber != nil {
@@ -1545,8 +1586,9 @@ type SendTxArgs struct {
 	Nonce    *hexutil.Uint64 `json:"nonce"`
 	// We accept "data" and "input" for backwards-compatibility reasons. "input" is the
 	// newer name and should be preferred by clients.
-	Data              *hexutil.Bytes          `json:"data"`
-	Input             *hexutil.Bytes          `json:"input"`
+	Data  *hexutil.Bytes `json:"data"`
+	Input *hexutil.Bytes `json:"input"`
+
 	L1BlockNumber     *big.Int                `json:"l1BlockNumber"`
 	L1MessageSender   *common.Address         `json:"l1MessageSender"`
 	SignatureHashType types.SignatureHashType `json:"signatureHashType"`
@@ -1620,9 +1662,15 @@ func (args *SendTxArgs) toTransaction() *types.Transaction {
 		input = *args.Data
 	}
 	if args.To == nil {
-		return types.NewContractCreation(uint64(*args.Nonce), (*big.Int)(args.Value), uint64(*args.Gas), (*big.Int)(args.GasPrice), input, nil, args.L1BlockNumber, types.QueueOriginSequencer)
+		tx := types.NewContractCreation(uint64(*args.Nonce), (*big.Int)(args.Value), uint64(*args.Gas), (*big.Int)(args.GasPrice), input)
+		txMeta := types.NewTransactionMeta(args.L1BlockNumber, 0, nil, types.SighashEIP155, types.QueueOriginSequencer, nil, nil, nil)
+		tx.SetTransactionMeta(txMeta)
+		return tx
 	}
-	return types.NewTransaction(uint64(*args.Nonce), *args.To, (*big.Int)(args.Value), uint64(*args.Gas), (*big.Int)(args.GasPrice), input, args.L1MessageSender, args.L1BlockNumber, types.QueueOriginSequencer, args.SignatureHashType)
+	tx := types.NewTransaction(uint64(*args.Nonce), *args.To, (*big.Int)(args.Value), uint64(*args.Gas), (*big.Int)(args.GasPrice), input)
+	txMeta := types.NewTransactionMeta(args.L1BlockNumber, 0, args.L1MessageSender, args.SignatureHashType, types.QueueOriginSequencer, nil, nil, nil)
+	tx.SetTransactionMeta(txMeta)
+	return tx
 }
 
 // SubmitTransaction is a helper function that submits tx to txPool and logs a message.
@@ -1719,8 +1767,8 @@ func (s *PublicTransactionPoolAPI) SendRawTransaction(ctx context.Context, encod
 		return common.Hash{}, errors.New("Gas price must be a multiple of 1,000,000 wei")
 	}
 	// L1Timestamp and L1BlockNumber will be set by the miner
-	meta := types.NewTransactionMeta(nil, 0, nil, types.SighashEIP155, types.QueueOriginSequencer)
-	tx.SetTransactionMeta(meta)
+	txMeta := types.NewTransactionMeta(nil, 0, nil, types.SighashEIP155, types.QueueOriginSequencer, nil, nil, nil)
+	tx.SetTransactionMeta(txMeta)
 	return SubmitTransaction(ctx, s.b, tx)
 }
 
@@ -1746,8 +1794,8 @@ func (s *PublicTransactionPoolAPI) SendRawEthSignTransaction(ctx context.Context
 		return common.Hash{}, errors.New("Gas price must be a multiple of 1,000,000 wei")
 	}
 	// L1Timestamp and L1BlockNumber will be set by the miner
-	meta := types.NewTransactionMeta(nil, 0, nil, types.SighashEthSign, types.QueueOriginSequencer)
-	tx.SetTransactionMeta(meta)
+	txMeta := types.NewTransactionMeta(nil, 0, nil, types.SighashEthSign, types.QueueOriginSequencer, nil, nil, nil)
+	tx.SetTransactionMeta(txMeta)
 	return SubmitTransaction(ctx, s.b, tx)
 }
 

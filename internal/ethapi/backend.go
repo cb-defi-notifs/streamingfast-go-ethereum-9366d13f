@@ -84,6 +84,9 @@ type Backend interface {
 	SubscribePendingLogsEvent(ch chan<- []*types.Log) event.Subscription
 	SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent) event.Subscription
 
+	ChainConfig() *params.ChainConfig
+	CurrentBlock() *types.Block
+
 	// Optimism-specific API
 	SetTimestamp(timestamp int64)
 	IsVerifier() bool
@@ -91,10 +94,6 @@ type Backend interface {
 	GetEthContext() (uint64, uint64)
 	GetRollupContext() (uint64, uint64)
 	GasLimit() uint64
-
-	ChainConfig() *params.ChainConfig
-	CurrentBlock() *types.Block
-
 	GetDiff(*big.Int) (diffdb.Diff, error)
 }
 

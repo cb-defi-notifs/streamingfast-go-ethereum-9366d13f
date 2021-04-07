@@ -243,6 +243,7 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 	}
 
 	var (
+		evm = st.evm
 		// vm errors do not effect consensus and are therefore
 		// not assigned to err, except for insufficient balance
 		// error.
@@ -258,11 +259,13 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 		if msg.L1MessageSender() != nil {
 			l1MessageSender = msg.L1MessageSender().Hex()
 		}
-		log.Debug("Applying transaction", "from", sender.Address().Hex(), "to", to, "nonce", msg.Nonce(), "gasPrice", msg.GasPrice().Uint64(), "gasLimit", msg.Gas(), "l1MessageSender", l1MessageSender, "data", hexutil.Encode(msg.Data()))
+		if st.evm.EthCallSender == nil {
+			log.Debug("Applying transaction", "ID", st.evm.Id, "from", sender.Address().Hex(), "to", to, "nonce", msg.Nonce(), "gasPrice", msg.GasPrice().Uint64(), "gasLimit", msg.Gas(), "l1MessageSender", l1MessageSender, "data", hexutil.Encode(msg.Data()))
+		}
 	}
 
 	if contractCreation {
-		ret, _, st.gas, vmerr = st.evm.Create(sender, st.data, st.gas, st.value)
+		ret, _, st.gas, vmerr = evm.Create(sender, st.data, st.gas, st.value)
 	} else {
 		// Increment the nonce for the next transaction
 		if !vm.UsingOVM {
@@ -270,7 +273,7 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 			st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1, st.dmContext)
 		}
 
-		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
+		ret, st.gas, vmerr = evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	}
 
 	if vmerr != nil {
@@ -282,7 +285,7 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 
 	if !vm.UsingOVM {
 		// OVM_DISABLED
-		st.state.AddBalance(st.evm.Coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice), false, st.dmContext, deepmind.BalanceChangeReason("reward_transaction_fee"))
+		st.state.AddBalance(evm.Coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice), false, st.dmContext, deepmind.BalanceChangeReason("reward_transaction_fee"))
 	}
 	return ret, st.gasUsed(), vmerr != nil, err
 }

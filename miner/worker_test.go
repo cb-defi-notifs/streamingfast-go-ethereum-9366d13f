@@ -83,22 +83,23 @@ func init() {
 		Period: 10,
 		Epoch:  30000,
 	}
-	tx1, _ := types.SignTx(types.NewTransaction(0, testUserAddress, big.NewInt(1000), params.TxGas, nil, nil, nil, nil, types.QueueOriginSequencer, types.SighashEIP155), types.HomesteadSigner{}, testBankKey)
+	tx1, _ := types.SignTx(types.NewTransaction(0, testUserAddress, big.NewInt(1000), params.TxGas, nil, nil), types.HomesteadSigner{}, testBankKey)
 	pendingTxs = append(pendingTxs, tx1)
-	tx2, _ := types.SignTx(types.NewTransaction(1, testUserAddress, big.NewInt(1000), params.TxGas, nil, nil, nil, nil, types.QueueOriginSequencer, types.SighashEIP155), types.HomesteadSigner{}, testBankKey)
+	tx2, _ := types.SignTx(types.NewTransaction(1, testUserAddress, big.NewInt(1000), params.TxGas, nil, nil), types.HomesteadSigner{}, testBankKey)
 	newTxs = append(newTxs, tx2)
 	rand.Seed(time.Now().UnixNano())
 }
 
 // testWorkerBackend implements worker.Backend interfaces and wraps all information needed during the testing.
 type testWorkerBackend struct {
-	db          ethdb.Database
-	txPool      *core.TxPool
-	chain       *core.BlockChain
+	db         ethdb.Database
+	txPool     *core.TxPool
+	chain      *core.BlockChain
+	testTxFeed event.Feed
+	genesis    *core.Genesis
+	uncleBlock *types.Block
+
 	syncService *rollup.SyncService
-	testTxFeed  event.Feed
-	genesis     *core.Genesis
-	uncleBlock  *types.Block
 }
 
 func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, n int) *testWorkerBackend {
@@ -141,17 +142,19 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 	})
 
 	return &testWorkerBackend{
-		db:          db,
-		chain:       chain,
-		txPool:      txpool,
+		db:         db,
+		chain:      chain,
+		txPool:     txpool,
+		genesis:    &gspec,
+		uncleBlock: blocks[0],
+
 		syncService: &rollup.SyncService{},
-		genesis:     &gspec,
-		uncleBlock:  blocks[0],
 	}
 }
 
-func (b *testWorkerBackend) BlockChain() *core.BlockChain     { return b.chain }
-func (b *testWorkerBackend) TxPool() *core.TxPool             { return b.txPool }
+func (b *testWorkerBackend) BlockChain() *core.BlockChain { return b.chain }
+func (b *testWorkerBackend) TxPool() *core.TxPool         { return b.txPool }
+
 func (b *testWorkerBackend) SyncService() *rollup.SyncService { return b.syncService }
 
 func (b *testWorkerBackend) newRandomUncle() *types.Block {
@@ -173,9 +176,9 @@ func (b *testWorkerBackend) newRandomUncle() *types.Block {
 func (b *testWorkerBackend) newRandomTx(creation bool) *types.Transaction {
 	var tx *types.Transaction
 	if creation {
-		tx, _ = types.SignTx(types.NewContractCreation(b.txPool.Nonce(testBankAddress), big.NewInt(0), testGas, nil, common.FromHex(testCode), nil, nil, types.QueueOriginSequencer), types.HomesteadSigner{}, testBankKey)
+		tx, _ = types.SignTx(types.NewContractCreation(b.txPool.Nonce(testBankAddress), big.NewInt(0), testGas, nil, common.FromHex(testCode)), types.HomesteadSigner{}, testBankKey)
 	} else {
-		tx, _ = types.SignTx(types.NewTransaction(b.txPool.Nonce(testBankAddress), testUserAddress, big.NewInt(1000), params.TxGas, nil, nil, nil, nil, types.QueueOriginSequencer, types.SighashEIP155), types.HomesteadSigner{}, testBankKey)
+		tx, _ = types.SignTx(types.NewTransaction(b.txPool.Nonce(testBankAddress), testUserAddress, big.NewInt(1000), params.TxGas, nil, nil), types.HomesteadSigner{}, testBankKey)
 	}
 	return tx
 }

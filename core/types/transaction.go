@@ -81,26 +81,21 @@ type txdataMarshaling struct {
 	S            *hexutil.Big
 }
 
-func NewTransaction(nonce uint64, to common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, l1MessageSender *common.Address, l1BlockNumber *big.Int, queueOrigin QueueOrigin, sighashType SignatureHashType) *Transaction {
-	return newTransaction(nonce, &to, amount, gasLimit, gasPrice, data, l1MessageSender, l1BlockNumber, queueOrigin, sighashType)
+func NewTransaction(nonce uint64, to common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte) *Transaction {
+	return newTransaction(nonce, &to, amount, gasLimit, gasPrice, data)
 }
 
 // TODO: cannot deploy contracts with SighashEthSign right until SighashEIP155 is no longer hardcoded
-func NewContractCreation(nonce uint64, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, l1MessageSender *common.Address, l1BlockNumber *big.Int, queueOrigin QueueOrigin) *Transaction {
-	return newTransaction(nonce, nil, amount, gasLimit, gasPrice, data, l1MessageSender, l1BlockNumber, queueOrigin, SighashEIP155)
+func NewContractCreation(nonce uint64, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte) *Transaction {
+	return newTransaction(nonce, nil, amount, gasLimit, gasPrice, data)
 }
 
-func NewBareTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, l1MessageSender *common.Address, l1BlockNumber *big.Int, queueOrigin QueueOrigin, sighashType SignatureHashType, v, r, s *big.Int) *Transaction {
+func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte) *Transaction {
 	if len(data) > 0 {
 		data = common.CopyBytes(data)
 	}
 
-	meta := TransactionMeta{
-		L1BlockNumber:     l1BlockNumber,
-		L1MessageSender:   l1MessageSender,
-		SignatureHashType: sighashType,
-		QueueOrigin:       big.NewInt(int64(queueOrigin)),
-	}
+	meta := NewTransactionMeta(nil, 0, nil, SighashEIP155, QueueOriginSequencer, nil, nil, nil)
 
 	d := txdata{
 		AccountNonce: nonce,
@@ -109,9 +104,9 @@ func NewBareTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLi
 		Amount:       new(big.Int),
 		GasLimit:     gasLimit,
 		Price:        new(big.Int),
-		V:            v,
-		R:            r,
-		S:            s,
+		V:            new(big.Int),
+		R:            new(big.Int),
+		S:            new(big.Int),
 	}
 	if amount != nil {
 		d.Amount.Set(amount)
@@ -120,7 +115,7 @@ func NewBareTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLi
 		d.Price.Set(gasPrice)
 	}
 
-	return &Transaction{data: d, meta: meta}
+	return &Transaction{data: d, meta: *meta}
 }
 
 func (t *Transaction) SetTransactionMeta(meta *TransactionMeta) {
@@ -162,10 +157,6 @@ func (t *Transaction) SetL1BlockNumber(bn uint64) {
 		return
 	}
 	t.meta.L1BlockNumber = new(big.Int).SetUint64(bn)
-}
-
-func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, l1MessageSender *common.Address, l1BlockNumber *big.Int, queueOrigin QueueOrigin, sighashType SignatureHashType) *Transaction {
-	return NewBareTransaction(nonce, to, amount, gasLimit, gasPrice, data, l1MessageSender, l1BlockNumber, queueOrigin, sighashType, new(big.Int), new(big.Int), new(big.Int))
 }
 
 // ChainId returns which chain id this transaction was signed for (if at all)
@@ -232,12 +223,13 @@ func (tx *Transaction) UnmarshalJSON(input []byte) error {
 	return nil
 }
 
-func (tx *Transaction) Data() []byte                         { return common.CopyBytes(tx.data.Payload) }
-func (tx *Transaction) Gas() uint64                          { return tx.data.GasLimit }
-func (tx *Transaction) GasPrice() *big.Int                   { return new(big.Int).Set(tx.data.Price) }
-func (tx *Transaction) Value() *big.Int                      { return new(big.Int).Set(tx.data.Amount) }
-func (tx *Transaction) Nonce() uint64                        { return tx.data.AccountNonce }
-func (tx *Transaction) CheckNonce() bool                     { return true }
+func (tx *Transaction) Data() []byte       { return common.CopyBytes(tx.data.Payload) }
+func (tx *Transaction) Gas() uint64        { return tx.data.GasLimit }
+func (tx *Transaction) GasPrice() *big.Int { return new(big.Int).Set(tx.data.Price) }
+func (tx *Transaction) Value() *big.Int    { return new(big.Int).Set(tx.data.Amount) }
+func (tx *Transaction) Nonce() uint64      { return tx.data.AccountNonce }
+func (tx *Transaction) CheckNonce() bool   { return true }
+
 func (tx *Transaction) SetNonce(nonce uint64)                { tx.data.AccountNonce = nonce }
 func (tx *Transaction) SignatureHashType() SignatureHashType { return tx.meta.SignatureHashType }
 func (tx *Transaction) SetSignatureHashType(sighashType SignatureHashType) {
@@ -317,17 +309,18 @@ func (tx *Transaction) Size() common.StorageSize {
 // XXX Rename message to something less arbitrary?
 func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 	msg := Message{
-		nonce:             tx.data.AccountNonce,
-		gasLimit:          tx.data.GasLimit,
-		gasPrice:          new(big.Int).Set(tx.data.Price),
-		to:                tx.data.Recipient,
+		nonce:      tx.data.AccountNonce,
+		gasLimit:   tx.data.GasLimit,
+		gasPrice:   new(big.Int).Set(tx.data.Price),
+		to:         tx.data.Recipient,
+		amount:     tx.data.Amount,
+		data:       tx.data.Payload,
+		checkNonce: true,
+
 		l1MessageSender:   tx.meta.L1MessageSender,
 		l1BlockNumber:     tx.meta.L1BlockNumber,
 		signatureHashType: tx.meta.SignatureHashType,
 		queueOrigin:       tx.meta.QueueOrigin,
-		amount:            tx.data.Amount,
-		data:              tx.data.Payload,
-		checkNonce:        true,
 	}
 
 	var err error
@@ -341,21 +334,6 @@ func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 	}
 
 	return msg, err
-}
-
-func (tx *Transaction) AsMessageFrom(from common.Address) *Message {
-	msg := &Message{
-		nonce:      tx.data.AccountNonce,
-		gasLimit:   tx.data.GasLimit,
-		gasPrice:   new(big.Int).Set(tx.data.Price),
-		from:       from,
-		to:         tx.data.Recipient,
-		amount:     tx.data.Amount,
-		data:       tx.data.Payload,
-		checkNonce: true,
-	}
-
-	return msg
 }
 
 // WithSignature returns a new transaction with the given signature.
@@ -546,30 +524,32 @@ func (t *TransactionsByPriceAndNonce) Pop() {
 //
 // NOTE: In a future PR this will be removed.
 type Message struct {
-	to                *common.Address
+	to         *common.Address
+	from       common.Address
+	nonce      uint64
+	amount     *big.Int
+	gasLimit   uint64
+	gasPrice   *big.Int
+	data       []byte
+	checkNonce bool
+
 	l1MessageSender   *common.Address
 	l1BlockNumber     *big.Int
 	signatureHashType SignatureHashType
 	queueOrigin       *big.Int
-	from              common.Address
-	nonce             uint64
-	amount            *big.Int
-	gasLimit          uint64
-	gasPrice          *big.Int
-	data              []byte
-	checkNonce        bool
 }
 
 func NewMessage(from common.Address, to *common.Address, nonce uint64, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte, checkNonce bool, l1MessageSender *common.Address, l1BlockNumber *big.Int, queueOrigin QueueOrigin, signatureHashType SignatureHashType) Message {
 	return Message{
-		from:              from,
-		to:                to,
-		nonce:             nonce,
-		amount:            amount,
-		gasLimit:          gasLimit,
-		gasPrice:          gasPrice,
-		data:              data,
-		checkNonce:        checkNonce,
+		from:       from,
+		to:         to,
+		nonce:      nonce,
+		amount:     amount,
+		gasLimit:   gasLimit,
+		gasPrice:   gasPrice,
+		data:       data,
+		checkNonce: checkNonce,
+
 		l1BlockNumber:     l1BlockNumber,
 		l1MessageSender:   l1MessageSender,
 		signatureHashType: signatureHashType,
@@ -577,15 +557,16 @@ func NewMessage(from common.Address, to *common.Address, nonce uint64, amount *b
 	}
 }
 
-func (m Message) From() common.Address                 { return m.from }
-func (m Message) To() *common.Address                  { return m.to }
+func (m Message) From() common.Address { return m.from }
+func (m Message) To() *common.Address  { return m.to }
+func (m Message) GasPrice() *big.Int   { return m.gasPrice }
+func (m Message) Value() *big.Int      { return m.amount }
+func (m Message) Gas() uint64          { return m.gasLimit }
+func (m Message) Nonce() uint64        { return m.nonce }
+func (m Message) Data() []byte         { return m.data }
+func (m Message) CheckNonce() bool     { return m.checkNonce }
+
 func (m Message) L1MessageSender() *common.Address     { return m.l1MessageSender }
 func (m Message) L1BlockNumber() *big.Int              { return m.l1BlockNumber }
 func (m Message) SignatureHashType() SignatureHashType { return m.signatureHashType }
 func (m Message) QueueOrigin() *big.Int                { return m.queueOrigin }
-func (m Message) GasPrice() *big.Int                   { return m.gasPrice }
-func (m Message) Value() *big.Int                      { return m.amount }
-func (m Message) Gas() uint64                          { return m.gasLimit }
-func (m Message) Nonce() uint64                        { return m.nonce }
-func (m Message) Data() []byte                         { return m.data }
-func (m Message) CheckNonce() bool                     { return m.checkNonce }
