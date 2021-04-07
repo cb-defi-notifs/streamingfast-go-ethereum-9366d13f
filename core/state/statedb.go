@@ -247,10 +247,6 @@ func (s *StateDB) SubRefund(gas uint64) {
 		panic(fmt.Sprintf("Refund counter below zero (gas: %d > refund: %d)", gas, s.refund))
 	}
 
-	// if dmContext.Enabled() {
-	// 	dmContext.Print("SUB_REFUND", deepmind.Uint64(s.refund), deepmind.Uint64(gas), deepmind.Uint64(s.refund-gas))
-	// }
-
 	s.refund -= gas
 }
 
