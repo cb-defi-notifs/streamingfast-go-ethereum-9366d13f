@@ -109,9 +109,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	if err := p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), dmContext); err != nil {
-		return nil, nil, 0, err
-	}
+	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), dmContext)
 
 	if dmContext.Enabled() {
 		dmContext.EndBlock(block)

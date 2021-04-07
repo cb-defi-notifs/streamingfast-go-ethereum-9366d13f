@@ -816,7 +816,7 @@ type account struct {
 	StateDiff *map[common.Hash]common.Hash `json:"stateDiff"`
 }
 
-var unsetTrxHash = common.Hash{}
+var dmUnsetTrxHash = common.Hash{}
 
 func DoCall(ctx context.Context, b Backend, args CallArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides map[common.Address]account, vmCfg vm.Config, timeout time.Duration, globalGasCap uint64, dmContext *deepmind.Context) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
@@ -880,7 +880,7 @@ func DoCall(ctx context.Context, b Backend, args CallArgs, blockNrOrHash rpc.Blo
 
 	if dmContext.Enabled() {
 		dmContext.StartTransactionRaw(
-			unsetTrxHash,
+			dmUnsetTrxHash,
 			msg.To(),
 			msg.Value(),
 			nil, nil, nil,
@@ -929,7 +929,7 @@ func DoCall(ctx context.Context, b Backend, args CallArgs, blockNrOrHash rpc.Blo
 		// Create a new receipt for the transaction, storing the intermediate root and gas used by the tx
 		// based on the eip phase, we're passing whether the root touch-delete accounts.
 		receipt := types.NewReceipt(root, failed, gasUsed)
-		receipt.TxHash = unsetTrxHash
+		receipt.TxHash = dmUnsetTrxHash
 		receipt.GasUsed = gasUsed
 		// if the transaction created a contract, store the creation address in the receipt.
 		if msg.To() == nil {
@@ -937,7 +937,7 @@ func DoCall(ctx context.Context, b Backend, args CallArgs, blockNrOrHash rpc.Blo
 			receipt.ContractAddress = crypto.CreateAddress(evm.Context.Origin, msg.Nonce())
 		}
 		// Set the receipt logs and create a bloom for filtering
-		receipt.Logs = state.GetLogs(unsetTrxHash)
+		receipt.Logs = state.GetLogs(dmUnsetTrxHash)
 		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 		receipt.BlockHash = header.Hash()
 		receipt.BlockNumber = header.Number

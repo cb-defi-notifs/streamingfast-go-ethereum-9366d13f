@@ -632,12 +632,12 @@ func opCreate(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]
 	} else {
 		stackvalue.SetBytes(addr.Bytes())
 	}
+	callContext.stack.push(&stackvalue)
 
 	if interpreter.evm.dmContext.Enabled() {
 		interpreter.evm.dmContext.RecordGasRefund(callContext.contract.Gas, returnGas)
 	}
 
-	callContext.stack.push(&stackvalue)
 	callContext.contract.Gas += returnGas
 
 	if suberr == ErrExecutionReverted {
@@ -674,11 +674,12 @@ func opCreate2(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([
 		stackvalue.SetBytes(addr.Bytes())
 	}
 
+	callContext.stack.push(&stackvalue)
+
 	if interpreter.evm.dmContext.Enabled() {
 		interpreter.evm.dmContext.RecordGasRefund(callContext.contract.Gas, returnGas)
 	}
 
-	callContext.stack.push(&stackvalue)
 	callContext.contract.Gas += returnGas
 
 	if suberr == ErrExecutionReverted {

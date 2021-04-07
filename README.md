@@ -12,7 +12,7 @@ The Huobi Open Platform is a unified infrastructure platform based on the techni
 Huobi ECO Chain (Heco) is a decentralized, high-efficiency and energy-saving public chain, also the first product launched by the Huobi Open Platform. It is compatible with smart contracts and supports high-performance transactions. The endogenous token of Heco is HT and it adopts the HPoS consensus mechanism. Heco will continue to improve the efficiency of Ethereum by Layer2, which will supplement and empower the Ethereum ecosystem.
 
 ## Declaration
-To help developers’ evolvement at every stage 
+To help developers’ evolvement at every stage
 
 ## Vision
 Technological innovation is the driving force behind the advancement of the blockchain industry, but many innovative projects have been misunderstood and ignored at their early stages. We have witnessed the growth process of great projects. Recalling that Ethereum and Polkadot were questioned as altcoins in the early days, they all went through difficult times. Therefore, Heco's mission is not only a public chain, but also to focus on the discovery and support of high-potential developers and innovative projects. Relying on the world's largest trading ecosystem, Heco is committed to becoming the birthplace of innovative technologies and innovative businesses, and building a complete ecological loop of technology development, application promotion, and trading.
@@ -26,15 +26,15 @@ HPoS consensus mechanism: it has the characteristics of low transaction cost, lo
 
 The maximum number of validators supported is 21.
 
-## Economic Model 
+## Economic Model
 The endogenous token on the chain is HT; the transactions consume HT as gas fee.
 
-Miners pledge HT to become validator nodes. The reward of nodes is gas fee, which is distributed according to the mortgage proportion. 
+Miners pledge HT to become validator nodes. The reward of nodes is gas fee, which is distributed according to the mortgage proportion.
 
 ## Cross-Chain
-Assets such as BTC, ETH and stable coins can be mapped to Heco by an asset bridge. The realization method is to lock a certain amount of tokens on the original chain then generate a corresponding number of tokens on Heco. 
+Assets such as BTC, ETH and stable coins can be mapped to Heco by an asset bridge. The realization method is to lock a certain amount of tokens on the original chain then generate a corresponding number of tokens on Heco.
 
-Heco encourages developers to provide more decentralized cross-chain solution.  
+Heco encourages developers to provide more decentralized cross-chain solution.
 
 ## Meta Transaction Function
 The meta-transaction function is supported, which allows users to reduce gas fees step-wise, and Heco will cover the payment of the reduced part. The meta-transaction function allows to minimize the migration cost of DApp developers, as well as to effectively reduce the cost of DApp users.
@@ -70,10 +70,10 @@ Users can participate in Dapp on Heco with a low threshold.</td><td rowspan=9 >2
 <tr style="background:rgba(0,0,0,0)"><td>Basic tool customization</td></tr>
 <tr style="background:rgba(0,0,0,0)"><td>Convenient asset transfer</td></tr>
 
-<tr style="background:rgba(0,0,0,0)"><td rowspan=5 > Spark </td><td rowspan=5 > 
-The protocol is further optimized. 
+<tr style="background:rgba(0,0,0,0)"><td rowspan=5 > Spark </td><td rowspan=5 >
+The protocol is further optimized.
 
-Heco will take the mission of connecting CeFi and DeFi, 
+Heco will take the mission of connecting CeFi and DeFi,
 
 allowing more users to use DeFi applications at a low threshold.  </td> <td rowspan=5 >2021 Q3 </td> <td rowspan=5 > To be announced  </td> <td>Complete developer tools</td></tr>
 <tr style="background:rgba(0,0,0,0)"><td>Complete developer forum, blog, and FAQ information</td></tr>
@@ -90,7 +90,7 @@ Expand performance while retaining the decentralized advantages of distributed p
 <tr style="background:rgba(0,0,0,0)"><td rowspan=5>Blaze</td> <td rowspan=5>
 
 
-Landing of large-scale commercial applications. 
+Landing of large-scale commercial applications.
 Support a variety of traditional businesses to run smoothly on the chain</td> <td rowspan=5>2023 Q1</td> <td rowspan=5>To be announced</td><td>Multiple virtual machine s supported</td></tr>
 <tr style="background:rgba(0,0,0,0)"><td>Multiple zero-knowledge proofs and privacy protection capabilities</td></tr>
 <tr style="background:rgba(0,0,0,0)"><td>Multiple signature schemes</td></tr>
@@ -108,7 +108,7 @@ Oracles, Voting tools, Anchor Coins, DEX, Lending, Fnancial Management, Insuranc
 ## Support Plan of Heco
 ### Financial Support
 - Heco will set up a special fund to invest, support and incentivize high-potential developers.
-- Heco will launch a variety of developer activities and competitions to discover and fund potential developers. 
+- Heco will launch a variety of developer activities and competitions to discover and fund potential developers.
 - In order to reduce the cost of users on Heco Dapp, the Heco meta transaction function will reduce the gas fee of users holding HT in a step-wise manner.
 
 ### Traffic Support
