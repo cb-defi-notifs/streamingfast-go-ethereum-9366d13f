@@ -52,11 +52,10 @@ require (
 	github.com/uber/jaeger-client-go v2.20.1+incompatible
 	github.com/uber/jaeger-lib v2.2.0+incompatible
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
-	golang.org/x/tools v0.0.0-20191109212701-97ad0ed33101 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/urfave/cli.v1 v1.22.1
 )
 
 replace gopkg.in/urfave/cli.v1 => github.com/urfave/cli v1.20.0
 
-replace github.com/ethereum/go-ethereum => github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210317192741-468dd96fef11
+replace github.com/ethereum/go-ethereum => github.com/dfuse-io/go-ethereum-private v1.9.10-0.20210408142533-7e5e05e72668
