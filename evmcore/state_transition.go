@@ -139,7 +139,7 @@ func IntrinsicGas(data []byte, contractCreation bool) (uint64, error) {
 }
 
 // NewStateTransition initialises and returns a new state transition object.
-func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool, dmContext *deepmind.Context) *StateTransition {
+func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition {
 	return &StateTransition{
 		gp:       gp,
 		evm:      evm,
@@ -149,7 +149,7 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool, dmContext *deepmi
 		data:     msg.Data(),
 		state:    evm.StateDB,
 
-		dmContext: dmContext,
+		dmContext: evm.DeepmindContext(),
 	}
 }
 
@@ -161,7 +161,7 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool, dmContext *deepmi
 // indicates a core error meaning that the message would always fail for that particular
 // state and would never be accepted within a block.
 func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool) (*ExecutionResult, error) {
-	return NewStateTransition(evm, msg, gp, evm.DeepmindPrinter()).TransitionDb()
+	return NewStateTransition(evm, msg, gp).TransitionDb()
 }
 
 // to returns the recipient of the message.

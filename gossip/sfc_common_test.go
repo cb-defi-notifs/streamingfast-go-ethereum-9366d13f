@@ -21,18 +21,9 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
-	"github.com/ethereum/go-ethereum/deepmind"
 	"math"
 	"math/big"
 	"time"
-
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/state"
-	eth "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 
 	"github.com/Fantom-foundation/go-lachesis/app"
 	"github.com/Fantom-foundation/go-lachesis/crypto"
@@ -46,6 +37,14 @@ import (
 	"github.com/Fantom-foundation/go-lachesis/logger"
 	"github.com/Fantom-foundation/go-lachesis/utils"
 	"github.com/Fantom-foundation/go-lachesis/vector"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/state"
+	eth "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/deepmind"
 )
 
 const (
@@ -336,7 +335,7 @@ func (env *testEnv) callContract(
 	// about the transaction and calling mechanisms.
 	vmenv := vm.NewEVM(evmContext, statedb, env.App.config.Net.EvmChainConfig(), vm.Config{}, deepmind.NoOpContext)
 	gaspool := new(evmcore.GasPool).AddGas(math.MaxUint64)
-	res, err := evmcore.NewStateTransition(vmenv, msg, gaspool, deepmind.NoOpContext).TransitionDb()
+	res, err := evmcore.NewStateTransition(vmenv, msg, gaspool).TransitionDb()
 
 	ret, usedGas, failed = res.Return(), res.UsedGas, res.Failed()
 	return
