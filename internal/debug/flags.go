@@ -155,7 +155,7 @@ var DeprecatedFlags = []cli.Flag{
 // DeepMindFlags holds all dfuse Deep Mind related command-line flags.
 var DeepMindFlags = []cli.Flag{
 	deepMindFlag, deepMindSyncInstrumentationFlag, deepMindMiningEnabledFlag, deepMindBlockProgressFlag,
-	deepMindCompactionDisabledFlag,
+	deepMindCompactionDisabledFlag, deepMindArchiveBlocksToKeepFlag,
 }
 
 var (
