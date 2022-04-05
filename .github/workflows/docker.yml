@@ -36,9 +36,8 @@ jobs:
           tags: |
             type=ref,event=tag
             type=match,pattern=^(.*)-v,group=1,suffix=-latest
-
-      - name: Print stuff
-        run: echo ${{ steps.meta.outputs.tags }}
+          flavor: |
+            latest=false
 
 #      - name: Build and push Docker image
 #        uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
