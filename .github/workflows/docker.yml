@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "[a-z0-9]+-v*"
+    branches: 
+      - action-test
 
 env:
   REGISTRY: ghcr.io
@@ -11,7 +13,7 @@ env:
 
 jobs:
   build-and-push-image:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     permissions:
       contents: read
       packages: write
@@ -51,6 +53,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # 2 docker tags: `{geth|bsc|...}-latest` and `{git-tag}`
           tags: |
+            type=ref,event=branch,priority=1000
             type=ref,event=tag,priority=1000
             type=match,pattern=^(.*)-v,group=1,suffix=-latest
           flavor: |
