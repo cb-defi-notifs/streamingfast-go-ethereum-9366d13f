@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - "[a-z0-9]+-v*"
-    releases:
+    branches:
       - "dockerbuild"
 
 env:
