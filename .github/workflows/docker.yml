@@ -5,7 +5,7 @@ on:
     tags:
       - "[a-z0-9]+-v*"
     releases:
-      - 'release/geth-1.10.x-fh'
+      - "dockerbuild"
 
 env:
   REGISTRY: ghcr.io
@@ -55,7 +55,7 @@ jobs:
           tags: |
             type=ref,event=tag,priority=1000
             type=match,pattern=^(.*)-v,group=1,suffix=-latest
-            type=raw,enable=${{ github.ref == 'release/geth-1.10.x-fh' }},value=release-geth-1.10.x-fh
+            type=raw,enable=${{ github.ref == 'dockerbuild' }},value=release-geth-1.10.x-fh
           flavor: |
             latest=false
 
