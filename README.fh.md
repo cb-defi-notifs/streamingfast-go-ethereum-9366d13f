@@ -39,7 +39,7 @@ git fetch bsc
 
 git checkout release/geth-1.10.x-fh1
 git checkout release/bsc-1.1.x-fh1
-git checkout release/polygon-0.2.x-fh1
+git checkout release/polygon-0.x-fh1
 ```
 
 If you want to work on one of the unmaintained branches:
@@ -100,8 +100,8 @@ Currently supported forks & version and the release branch
 - `firehose-v1` - Default branch with all Firehose commits in it, based on Geth `1.9.10`.
 - `firehose-v2` - Default branch with all Firehose commits in it, based on Geth `1.9.10` (Ethereum Block Version 2).
 - [release/geth-1.10.x-fh1](https://github.com/streamingfast/go-ethereum/tree/release/geth-1.10.x-fh1) - Ethereum Geth, latest update for this branch is `1.10.7` ([https://github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum)).
-- [release/polygon-0.2.x-fh1](https://github.com/streamingfast/go-ethereum/tree/release/polygon-0.2.x-fh1) - Polygon fork (a.k.a Matic), based on Geth `1.10.3`, latest update for this branch is `v0.2.6` ([https://github.com/maticnetwork/bor](https://github.com/maticnetwork/bor)).
-- [release/bsc-1.1.x-fh1](https://github.com/streamingfast/go-ethereum/tree/release/bsc-1.1.x-fh1) - BSC fork (Binance), based on Geth `1.10.3`, latest update for this branch is `v1.1.1` ([https://github.com/binance-chain/bsc](https://github.com/binance-chain/bsc)).
+- [release/polygon-0.2.x-fh1](https://github.com/streamingfast/go-ethereum/tree/release/polygon-0.x-fh1) - Polygon fork (a.k.a Matic), based on Geth `1.10.3`, latest update for this branch is `v0.3.0` ([https://github.com/maticnetwork/bor](https://github.com/maticnetwork/bor)).
+- [release/bsc-1.1.x-fh1](https://github.com/streamingfast/go-ethereum/tree/release/bsc-1.1.x-fh1) - BSC fork (Binance), based on Geth `1.10.22`, latest update for this branch is `v1.1.1` ([https://github.com/binance-chain/bsc](https://github.com/binance-chain/bsc)).
 - [release/heco-1.0.x-fh1](https://github.com/streamingfast/go-ethereum/tree/release/heco-1.0.x-fh1) - HECO fork (a.k.a Huobi Eco Chain), based on Geth `1.10.1`, latest update for this branch is `v1.1.1` ([https://github.com/HuobiGroup/huobi-eco-chain](https://github.com/HuobiGroup/huobi-eco-chain)).
 - [release/optimism-0.1.x-fh1](https://github.com/streamingfast/go-ethereum/tree/release/optimism-0.1.x-fh1) - Optimism fork, based on Geth `1.9.10`, latest update for this branch is `v0.1.4` ([https://github.com/ethereum-optimism/go-ethereum](https://github.com/ethereum-optimism/go-ethereum)).
 - [release/fantom-geth-1.9.x-fh1](https://github.com/streamingfast/go-ethereum/tree/release/fantom-geth-1.9.x-fh1) - Fantom Geth fork, based on Geth `1.9.22`, latest update for this branch is `v1.9.22-ftm-0.5` (a branch) ([https://github.com/Fantom-foundation/go-ethereum](https://github.com/Fantom-foundation/go-ethereum)).
@@ -123,11 +123,11 @@ and support.
     git pull -p
     git merge firehose-v1-v1.10.1
 
-    git checkout release/polygon-0.2.x-fh1
+    git checkout release/polygon-0.x-fh1
     git pull -p
     git merge firehose-v1-v1.10.1
 
-    git push sf firehose-v1-v1.10.1 release/geth-1.10.x-fh1 release/polygon-0.2.x-fh1
+    git push sf firehose-v1-v1.10.1 release/geth-1.10.x-fh1 release/polygon-0.x-fh1
 
 **Note** On newer fork, you must merge the right version, for example if the fork never merged 1.10.1 from the upstream Geth, you must **not** use
 `firehose-v1-v1.10.1` but instead use `firehose-v1` which is based on 1.9.10.
