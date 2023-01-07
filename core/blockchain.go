@@ -40,8 +40,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/internal/syncx"
 	"github.com/ethereum/go-ethereum/firehose"
+	"github.com/ethereum/go-ethereum/internal/syncx"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
@@ -132,17 +132,6 @@ const (
 	//    * New scheme for contract code in order to separate the codes and trie nodes
 	BlockChainVersion uint64 = 8
 )
-
-// Firehose tweaked constants
-const (
-	// DefaultTriesInMemory keeps the default value of TriesInMemory value so we can determine if it changed.
-	// The default values is still used in the P2P network so we don't advertise that we keep more state than
-	// other Full nodes keep by default.
-	DefaultTriesInMemory = uint64(128)
-)
-
-// Firehose turned this into a `var` to allow overriding, was a `const`
-var TriesInMemory = DefaultTriesInMemory
 
 // CacheConfig contains the configuration values for the trie caching/pruning
 // that's resident in a blockchain.
@@ -487,12 +476,12 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		}
 
 		if firehose.GenesisConfig == nil {
-			panic(fmt.Errorf("The genesis config is not set, there is something weird as all code path should generate the correct genesis config"))
+			panic(fmt.Errorf("genesis config is not set, there is something weird as all code path should generate the correct genesis config"))
 		}
 
 		genesis := firehose.GenesisConfig.(*Genesis)
 		if genesis == nil {
-			panic(fmt.Errorf("The genesis config is not set, there is something weird as all code path should generate the correct genesis config"))
+			panic(fmt.Errorf("genesis config is not set, there is something weird as all code path should generate the correct genesis config"))
 		}
 
 		// As far as I can tell, the block's hash comes from the keccak hash of the rlp encoding

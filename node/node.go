@@ -34,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/firehose"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -662,7 +661,7 @@ func (n *Node) OpenDiffDatabase(name string, handles int, diff, namespace string
 	case !filepath.IsAbs(diff):
 		diff = n.ResolvePath(diff)
 	}
-	db, err = leveldb.New(diff, 0, handles, namespace, readonly, firehose.CompactionDisabled)
+	db, err = leveldb.New(diff, 0, handles, namespace, readonly)
 
 	return db, err
 }

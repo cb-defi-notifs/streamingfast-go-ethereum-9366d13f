@@ -112,15 +112,6 @@ var (
 		Name:  "firehose-block-progress",
 		Usage: "Activate/deactivate Firehose block progress output instrumentation, disabled by default",
 	}
-	firehoseCompactionDisabledFlag = cli.BoolFlag{
-		Name:  "firehose-compaction-disabled",
-		Usage: "Disabled database compaction, enabled by default",
-	}
-	firehoseArchiveBlocksToKeepFlag = cli.Uint64Flag{
-		Name:  "firehose-archive-blocks-to-keep",
-		Usage: "Controls how many archive blocks the node should keep, this tweaks the core/blockchain.go constant value TriesInMemory, the default value of 0 can be used to use Geth default value instead which is 128",
-		Value: firehose.ArchiveBlocksToKeep,
-	}
 	firehoseGenesisFileFlag = cli.StringFlag{
 		Name:  "firehose-genesis-file",
 		Usage: "On private chains where the genesis config is not known to Geth, you **must** provide the 'genesis.json' file path for proper instrumentation of genesis block",
@@ -147,7 +138,7 @@ var Flags = []cli.Flag{
 // FirehoseFlags holds all StreamingFast Firehose related command-line flags.
 var FirehoseFlags = []cli.Flag{
 	firehoseEnabledFlag, firehoseSyncInstrumentationFlag, firehoseMiningEnabledFlag, firehoseBlockProgressFlag,
-	firehoseCompactionDisabledFlag, firehoseArchiveBlocksToKeepFlag, firehoseGenesisFileFlag,
+	firehoseGenesisFileFlag,
 }
 
 var glogger *log.GlogHandler
@@ -230,8 +221,6 @@ func Setup(ctx *cli.Context, genesis *core.Genesis) error {
 	firehose.SyncInstrumentationEnabled = ctx.GlobalBoolT(firehoseSyncInstrumentationFlag.Name)
 	firehose.MiningEnabled = ctx.GlobalBool(firehoseMiningEnabledFlag.Name)
 	firehose.BlockProgressEnabled = ctx.GlobalBool(firehoseBlockProgressFlag.Name)
-	firehose.CompactionDisabled = ctx.GlobalBool(firehoseCompactionDisabledFlag.Name)
-	firehose.ArchiveBlocksToKeep = ctx.GlobalUint64(firehoseArchiveBlocksToKeepFlag.Name)
 
 	genesisProvenance := "unset"
 
@@ -264,8 +253,6 @@ func Setup(ctx *cli.Context, genesis *core.Genesis) error {
 		"sync_instrumentation_enabled", firehose.SyncInstrumentationEnabled,
 		"mining_enabled", firehose.MiningEnabled,
 		"block_progress_enabled", firehose.BlockProgressEnabled,
-		"compaction_disabled", firehose.CompactionDisabled,
-		"archive_blocks_to_keep", firehose.ArchiveBlocksToKeep,
 		"genesis_provenance", genesisProvenance,
 		"firehose_version", params.FirehoseVersion(),
 		"geth_version", params.VersionWithMeta,
