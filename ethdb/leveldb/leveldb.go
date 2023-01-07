@@ -79,15 +79,13 @@ type Database struct {
 	quitLock sync.Mutex      // Mutex protecting the quit channel access
 	quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
 
-	firehoseCompactionDisabled bool
-
 	log log.Logger // Contextual logger tracking the database path
 }
 
 // New returns a wrapped LevelDB object. The namespace is the prefix that the
 // metrics reporting should use for surfacing internal stats.
-func New(file string, cache int, handles int, namespace string, readonly bool, firehoseCompactionDisabled bool) (*Database, error) {
-	return NewCustom(file, namespace, firehoseCompactionDisabled, func(options *opt.Options) {
+func New(file string, cache int, handles int, namespace string, readonly bool) (*Database, error) {
+	return NewCustom(file, namespace, func(options *opt.Options) {
 		// Ensure we have some minimal caching and file guarantees
 		if cache < minCache {
 			cache = minCache
@@ -108,7 +106,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool, f
 // NewCustom returns a wrapped LevelDB object. The namespace is the prefix that the
 // metrics reporting should use for surfacing internal stats.
 // The customize function allows the caller to modify the leveldb options.
-func NewCustom(file string, namespace string, firehoseCompactionDisabled bool, customize func(options *opt.Options)) (*Database, error) {
+func NewCustom(file string, namespace string, customize func(options *opt.Options)) (*Database, error) {
 	options := configureOptions(customize)
 	logger := log.New("database", file)
 	usedCache := options.GetBlockCacheCapacity() + options.GetWriteBuffer()*2
@@ -117,16 +115,6 @@ func NewCustom(file string, namespace string, firehoseCompactionDisabled bool, c
 		logCtx = append(logCtx, "readonly", "true")
 	}
 	logger.Info("Allocated cache and file handles", logCtx...)
-
-	if firehoseCompactionDisabled {
-		logger.Info("Disabling database compaction by setting L0 Compaction + Write triggers threshold to MAX_INT")
-		// By setting those values really high, we disable compaction of the database completely
-		maxInt := int(^uint(0) >> 1)
-
-		options.CompactionL0Trigger = maxInt
-		options.WriteL0PauseTrigger = maxInt
-		options.WriteL0SlowdownTrigger = maxInt
-	}
 
 	// Open the db and recover any potential corruptions
 	db, err := leveldb.OpenFile(file, options)
@@ -138,11 +126,10 @@ func NewCustom(file string, namespace string, firehoseCompactionDisabled bool, c
 	}
 	// Assemble the wrapper with all the registered metrics
 	ldb := &Database{
-		fn:                         file,
-		db:                         db,
-		log:                        logger,
-		quitChan:                   make(chan chan error),
-		firehoseCompactionDisabled: firehoseCompactionDisabled,
+		fn:       file,
+		db:       db,
+		log:      logger,
+		quitChan: make(chan chan error),
 	}
 	ldb.compTimeMeter = metrics.NewRegisteredMeter(namespace+"compact/time", nil)
 	ldb.compReadMeter = metrics.NewRegisteredMeter(namespace+"compact/input", nil)
@@ -267,11 +254,6 @@ func (db *Database) Stat(property string) (string, error) {
 // is treated as a key after all keys in the data store. If both is nil then it
 // will compact entire data store.
 func (db *Database) Compact(start []byte, limit []byte) error {
-	if db.firehoseCompactionDisabled {
-		db.log.Info("Database compaction is disabled through --firehose-compaction-disabled")
-		return nil
-	}
-
 	return db.db.CompactRange(util.Range{Start: start, Limit: limit})
 }
 
@@ -284,13 +266,14 @@ func (db *Database) Path() string {
 // the metrics subsystem.
 //
 // This is how a LevelDB stats table looks like (currently):
-//   Compactions
-//    Level |   Tables   |    Size(MB)   |    Time(sec)  |    Read(MB)   |   Write(MB)
-//   -------+------------+---------------+---------------+---------------+---------------
-//      0   |          0 |       0.00000 |       1.27969 |       0.00000 |      12.31098
-//      1   |         85 |     109.27913 |      28.09293 |     213.92493 |     214.26294
-//      2   |        523 |    1000.37159 |       7.26059 |      66.86342 |      66.77884
-//      3   |        570 |    1113.18458 |       0.00000 |       0.00000 |       0.00000
+//
+//	Compactions
+//	 Level |   Tables   |    Size(MB)   |    Time(sec)  |    Read(MB)   |   Write(MB)
+//	-------+------------+---------------+---------------+---------------+---------------
+//	   0   |          0 |       0.00000 |       1.27969 |       0.00000 |      12.31098
+//	   1   |         85 |     109.27913 |      28.09293 |     213.92493 |     214.26294
+//	   2   |        523 |    1000.37159 |       7.26059 |      66.86342 |      66.77884
+//	   3   |        570 |    1113.18458 |       0.00000 |       0.00000 |       0.00000
 //
 // This is how the write delay look like (currently):
 // DelayN:5 Delay:406.604657ms Paused: false

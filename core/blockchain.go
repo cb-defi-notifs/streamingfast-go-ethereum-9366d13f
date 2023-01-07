@@ -94,6 +94,7 @@ const (
 	txLookupCacheLimit  = 1024
 	maxFutureBlocks     = 256
 	maxTimeFutureBlocks = 30
+	TriesInMemory       = 128
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -120,17 +121,6 @@ const (
 	//    * New scheme for contract code in order to separate the codes and trie nodes
 	BlockChainVersion uint64 = 8
 )
-
-// Firehose tweaked constants
-const (
-	// DefaultTriesInMemory keeps the default value of TriesInMemory value so we can determine if it changed.
-	// The default values is still used in the P2P network so we don't advertise that we keep more state than
-	// other Full nodes keep by default.
-	DefaultTriesInMemory = uint64(128)
-)
-
-// Firehose turned this into a `var` to allow overriding, was a `const`
-var TriesInMemory = DefaultTriesInMemory
 
 // CacheConfig contains the configuration values for the trie caching/pruning
 // that's resident in a blockchain.
@@ -232,14 +222,6 @@ type BlockChain struct {
 // available in the database. It initialises the default Ethereum Validator
 // and Processor.
 func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config, shouldPreserve func(header *types.Header) bool, txLookupLimit *uint64) (*BlockChain, error) {
-	// This is one of the rare case where Firehose is not enabled and we still perform something.
-	if firehose.ArchiveBlocksToKeep != 0 {
-		old := TriesInMemory
-		TriesInMemory = firehose.ArchiveBlocksToKeep
-
-		log.Info("Firehose overrode TriesInMemory value (coming from archive blocks to keep value)", "tries_in_memory", firehose.ArchiveBlocksToKeep, "was", old)
-	}
-
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
 	}
@@ -411,12 +393,12 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		}
 
 		if firehose.GenesisConfig == nil {
-			panic(fmt.Errorf("The genesis config is not set, there is something weird as all code path should generate the correct genesis config"))
+			panic(fmt.Errorf("genesis config is not set, there is something weird as all code path should generate the correct genesis config"))
 		}
 
 		genesis := firehose.GenesisConfig.(*Genesis)
 		if genesis == nil {
-			panic(fmt.Errorf("The genesis config is not set, there is something weird as all code path should generate the correct genesis config"))
+			panic(fmt.Errorf("genesis config is not set, there is something weird as all code path should generate the correct genesis config"))
 		}
 
 		// As far as I can tell, the block's hash comes from the keccak hash of the rlp encoding
