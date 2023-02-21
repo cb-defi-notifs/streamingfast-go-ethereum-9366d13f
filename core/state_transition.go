@@ -174,7 +174,8 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 
 		firehoseContext: evm.FirehoseContext(),
 	}
-	fmt.Printf("State transition created: %+v\n", st)
+	fmt.Printf("State transition created: value:%s, gasPrice:%s, gasFeeCap:%s, gasTipCap:%s\n", st.value.String(), st.gasPrice.String(), st.gasFeeCap.String(), st.gasTipCap.String())
+	fmt.Printf("evm chainconfig: %+v\n", evm.ChainConfig())
 	return st
 }
 
