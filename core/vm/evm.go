@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"fmt"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -196,9 +197,13 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		return nil, gas, ErrInsufficientBalance
 	}
 	snapshot := evm.StateDB.Snapshot()
+	fmt.Println("Called Snapshot", snapshot)
 	p, isPrecompile := evm.precompile(addr)
 
-	if !evm.StateDB.Exist(addr) {
+	exists := evm.StateDB.Exist(addr)
+	fmt.Println("Called exists addr", addr.String(), exists)
+
+	if !exists {
 		if !isPrecompile && evm.chainRules.IsEIP158 && value.Sign() == 0 {
 			// Calling a non existing account, don't do anything, but ping the tracer
 			if evm.Config.Debug {
@@ -217,8 +222,10 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 
 			return nil, gas, nil
 		}
+		fmt.Println("Called CreateAccount", addr.String())
 		evm.StateDB.CreateAccount(addr, evm.firehoseContext)
 	}
+	fmt.Println("Called transfer", caller.Address().String(), addr.String(), value.String())
 	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value, evm.firehoseContext)
 
 	// Capture the tracer start/end events in debug mode
@@ -243,6 +250,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
 		code := evm.StateDB.GetCode(addr)
+		fmt.Println("Called GetCode", addr.String(), len(code))
 		if len(code) == 0 {
 			if evm.firehoseContext.Enabled() {
 				evm.firehoseContext.RecordCallWithoutCode()
@@ -254,7 +262,9 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			// If the account has no code, we can abort here
 			// The depth-check is already done, and precompiles handled above
 			contract := NewContract(caller, AccountRef(addrCopy), value, gas, evm.firehoseContext)
-			contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), code)
+			hash := evm.StateDB.GetCodeHash(addrCopy)
+			fmt.Println("Called GetCodeHash", hash.String(), addrCopy.String())
+			contract.SetCallCode(&addrCopy, hash, code)
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		}
@@ -267,6 +277,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			evm.firehoseContext.RecordCallFailed(gas, err.Error())
 		}
 
+		fmt.Println("Called RevertToSnapshot", snapshot)
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
 			if evm.firehoseContext.Enabled() {
@@ -316,6 +327,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	// if caller doesn't have enough balance, it would be an error to allow
 	// over-charging itself. So the check here is necessary.
 	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
+		fmt.Println("Called CanTransfer, result false")
 		if evm.firehoseContext.Enabled() {
 			evm.firehoseContext.EndFailedCall(gas, true, ErrInsufficientBalance.Error())
 		}
@@ -324,6 +336,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	}
 
 	var snapshot = evm.StateDB.Snapshot()
+	fmt.Println("Called snapshot, got", snapshot)
 
 	// Invoke tracer hooks that signal entering/exiting a call frame
 	if evm.Config.Debug {
@@ -341,7 +354,11 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
 		contract := NewContract(caller, AccountRef(caller.Address()), value, gas, evm.firehoseContext)
-		contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
+		hash := evm.StateDB.GetCodeHash(addrCopy)
+		fmt.Println("Called GetCodeHash", hash.String(), addrCopy.String())
+		code := evm.StateDB.GetCode(addrCopy)
+		fmt.Println("Called GetCode", len(code), addrCopy.String())
+		contract.SetCallCode(&addrCopy, hash, code)
 		ret, err = evm.interpreter.Run(contract, input, false)
 		gas = contract.Gas
 	}
@@ -350,6 +367,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			evm.firehoseContext.RecordCallFailed(gas, err.Error())
 		}
 
+		fmt.Println("Called RevertToSnapshot(snapshot)")
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
 			if evm.firehoseContext.Enabled() {
@@ -407,6 +425,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 	}
 
 	var snapshot = evm.StateDB.Snapshot()
+	fmt.Println("Called snapshot", snapshot)
 
 	// Invoke tracer hooks that signal entering/exiting a call frame
 	if evm.Config.Debug {
@@ -423,7 +442,12 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 		addrCopy := addr
 		// Initialise a new contract and make initialise the delegate values
 		contract := NewContract(caller, AccountRef(caller.Address()), nil, gas, evm.firehoseContext).AsDelegate()
-		contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
+		hash := evm.StateDB.GetCodeHash(addrCopy)
+		fmt.Println("Called GetCodeHash", addrCopy.String(), hash.String())
+		code := evm.StateDB.GetCode(addrCopy)
+		fmt.Println("Called GetCode", addrCopy.String(), len(code))
+
+		contract.SetCallCode(&addrCopy, hash, code)
 		ret, err = evm.interpreter.Run(contract, input, false)
 		gas = contract.Gas
 	}
@@ -433,6 +457,8 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 		}
 
 		evm.StateDB.RevertToSnapshot(snapshot)
+		fmt.Println("Called RevertToSnapshot", snapshot)
+
 		if err != ErrExecutionReverted {
 			if evm.firehoseContext.Enabled() {
 				evm.firehoseContext.RecordGasConsume(gas, gas, firehose.FailedExecutionGasChangeReason)
@@ -475,6 +501,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	// then certain tests start failing; stRevertTest/RevertPrecompiledTouchExactOOG.json.
 	// We could change this, but for now it's left for legacy reasons
 	var snapshot = evm.StateDB.Snapshot()
+	fmt.Println("Called Snapshot", snapshot)
 
 	// Deep Mind moved this piece of code from the next if statement below (`if isPrecompile` was `if  p, isPrecompile := evm.precompile(addr); isPrecompile`)
 	p, isPrecompile := evm.precompile(addr)
@@ -484,6 +511,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	// but is the correct thing to do and matters on other networks, in tests, and potential
 	// future scenarios
 	evm.StateDB.AddBalance(addr, big0, isPrecompile, evm.firehoseContext, firehose.IgnoredBalanceChangeReason)
+	fmt.Println("Called AddBalance", addr.String(), big0.String())
 
 	// Invoke tracer hooks that signal entering/exiting a call frame
 	if evm.Config.Debug {
@@ -503,7 +531,13 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
 		contract := NewContract(caller, AccountRef(addrCopy), new(big.Int), gas, evm.firehoseContext)
-		contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
+
+		hash := evm.StateDB.GetCodeHash(addrCopy)
+		fmt.Println("Called GetCodeHash", addrCopy.String(), hash.String())
+		code := evm.StateDB.GetCode(addrCopy)
+		fmt.Println("Called GetCode", addrCopy.String(), len(code))
+
+		contract.SetCallCode(&addrCopy, hash, code)
 		// When an error was returned by the EVM or when setting the creation code
 		// above we revert to the snapshot and consume any gas remaining. Additionally
 		// when we're in Homestead this also counts for code storage gas errors.
@@ -516,6 +550,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		}
 
 		evm.StateDB.RevertToSnapshot(snapshot)
+		fmt.Println("Called RevertToSnapshot", snapshot)
 		if err != ErrExecutionReverted {
 			if evm.firehoseContext.Enabled() {
 				evm.firehoseContext.RecordGasConsume(gas, gas, firehose.FailedExecutionGasChangeReason)
@@ -565,6 +600,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 		return nil, common.Address{}, gas, ErrDepth
 	}
 	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
+		fmt.Println("Called CanTransfer, cannot")
 		if evm.firehoseContext.Enabled() {
 			evm.firehoseContext.EndFailedCall(gas, true, ErrInsufficientBalance.Error())
 		}
@@ -573,6 +609,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	}
 
 	nonce := evm.StateDB.GetNonce(caller.Address())
+	fmt.Println("Called GetNonce", nonce, caller.Address().String())
 	if nonce+1 < nonce {
 		if evm.firehoseContext.Enabled() {
 			evm.firehoseContext.EndFailedCall(gas, true, ErrNonceUintOverflow.Error())
@@ -581,14 +618,18 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 		return nil, common.Address{}, gas, ErrNonceUintOverflow
 	}
 	evm.StateDB.SetNonce(caller.Address(), nonce+1, evm.firehoseContext)
+	fmt.Println("Called SetNonce", nonce+1, caller.Address().String())
 	// We add this to the access list _before_ taking a snapshot. Even if the creation fails,
 	// the access-list change should not be rolled back
 	if evm.chainRules.IsBerlin {
+		fmt.Println("Called AddAddressToAccessList", address.String())
 		evm.StateDB.AddAddressToAccessList(address)
 	}
 	// Ensure there's no existing contract already at the designated address
 	contractHash := evm.StateDB.GetCodeHash(address)
+	fmt.Println("Called GetCodeHash", address.String())
 	if evm.StateDB.GetNonce(address) != 0 || (contractHash != (common.Hash{}) && contractHash != emptyCodeHash) {
+		fmt.Println("Called GetNonce not zero")
 		if evm.firehoseContext.Enabled() {
 			// In the case of a contract collision, the gas is fully consume since the retured gas value in the
 			// return a little below is 0. This means we are facing not a revertion like other early failure
@@ -603,11 +644,15 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 
 	// Create a new account on the state
 	snapshot := evm.StateDB.Snapshot()
+	fmt.Println("Called Snapshot", snapshot)
 	evm.StateDB.CreateAccount(address, evm.firehoseContext)
+	fmt.Println("Called CreateAccount", address.String())
 	if evm.chainRules.IsEIP158 {
 		evm.StateDB.SetNonce(address, 1, evm.firehoseContext)
+		fmt.Println("Called SetNonce", 1, address.String())
 	}
 	evm.Context.Transfer(evm.StateDB, caller.Address(), address, value, evm.firehoseContext)
+	fmt.Println("Called Transfer", caller.Address().String(), address.String(), value.String())
 
 	// Initialise a new contract and set the code that is to be used by the EVM.
 	// The contract is a scoped environment for this execution context only.
@@ -645,6 +690,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 
 		if contract.UseGas(createDataGas, firehose.GasChangeReason("code_storage")) {
 			evm.StateDB.SetCode(address, ret, evm.firehoseContext)
+			fmt.Println("Called SetCode", address.String())
 		} else {
 			err = ErrCodeStoreOutOfGas
 		}
@@ -655,6 +701,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	// when we're in homestead this also counts for code storage gas errors.
 	if err != nil && (evm.chainRules.IsHomestead || err != ErrCodeStoreOutOfGas) {
 		evm.StateDB.RevertToSnapshot(snapshot)
+		fmt.Println("Called RevertToSnapshot", snapshot)
 		if evm.firehoseContext.Enabled() {
 			evm.firehoseContext.RecordCallFailed(contract.Gas, err.Error())
 		}
@@ -684,7 +731,9 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 
 // Create creates a new contract using code as deployment code.
 func (evm *EVM) Create(caller ContractRef, code []byte, gas uint64, value *big.Int) (ret []byte, contractAddr common.Address, leftOverGas uint64, err error) {
-	contractAddr = crypto.CreateAddress(caller.Address(), evm.StateDB.GetNonce(caller.Address()))
+	nonce := evm.StateDB.GetNonce(caller.Address())
+	fmt.Println("Called GetNonce", nonce, caller.Address().String())
+	contractAddr = crypto.CreateAddress(caller.Address(), nonce)
 	return evm.create(caller, &codeAndHash{code: code}, gas, value, contractAddr, CREATE)
 }
 
