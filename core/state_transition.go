@@ -43,8 +43,10 @@ The state transitioning model does all the necessary work to work out a valid ne
 3) Create a new state object if the recipient is \0*32
 4) Value transfer
 == If contract creation ==
-  4a) Attempt to run transaction data
-  4b) If valid, use result as code for the new state object
+
+	4a) Attempt to run transaction data
+	4b) If valid, use result as code for the new state object
+
 == end ==
 5) Run Script section
 6) Derive new state root
@@ -159,7 +161,7 @@ func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation b
 
 // NewStateTransition initialises and returns a new state transition object.
 func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition {
-	return &StateTransition{
+	st := &StateTransition{
 		gp:        gp,
 		evm:       evm,
 		msg:       msg,
@@ -172,6 +174,8 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 
 		firehoseContext: evm.FirehoseContext(),
 	}
+	fmt.Printf("State transition created: %+v\n", st)
+	return st
 }
 
 // ApplyMessage computes the new state by applying the given message
@@ -203,6 +207,7 @@ func (st *StateTransition) buyGas() error {
 		balanceCheck.Add(balanceCheck, st.value)
 	}
 	if have, want := st.state.GetBalance(st.msg.From()), balanceCheck; have.Cmp(want) < 0 {
+		fmt.Println("Called GetBalance", have, want)
 		return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
 	}
 	if err := st.gp.SubGas(st.msg.Gas()); err != nil {
@@ -211,6 +216,7 @@ func (st *StateTransition) buyGas() error {
 	st.gas += st.msg.Gas()
 
 	st.initialGas = st.msg.Gas()
+	fmt.Println("Called SubBalance")
 	st.state.SubBalance(st.msg.From(), mgval, st.firehoseContext, firehose.BalanceChangeReason("gas_buy"))
 	return nil
 }
@@ -220,6 +226,7 @@ func (st *StateTransition) preCheck() error {
 	if !st.msg.IsFake() {
 		// Make sure this transaction's nonce is correct.
 		stNonce := st.state.GetNonce(st.msg.From())
+		fmt.Println("Called GetNonce", stNonce)
 		if msgNonce := st.msg.Nonce(); stNonce < msgNonce {
 			return fmt.Errorf("%w: address %v, tx: %d state: %d", ErrNonceTooHigh,
 				st.msg.From().Hex(), msgNonce, stNonce)
@@ -232,6 +239,7 @@ func (st *StateTransition) preCheck() error {
 		}
 		// Make sure the sender is an EOA
 		if codeHash := st.state.GetCodeHash(st.msg.From()); codeHash != emptyCodeHash && codeHash != (common.Hash{}) {
+			fmt.Println("Called GetCodeHash", codeHash.String())
 			return fmt.Errorf("%w: address %v, codehash: %s", ErrSenderNoEOA,
 				st.msg.From().Hex(), codeHash)
 		}
@@ -266,13 +274,13 @@ func (st *StateTransition) preCheck() error {
 // TransitionDb will transition the state by applying the current message and
 // returning the evm execution result with following fields.
 //
-// - used gas:
-//      total gas used (including gas being refunded)
-// - returndata:
-//      the returned data from evm
-// - concrete execution error:
-//      various **EVM** error which aborts the execution,
-//      e.g. ErrOutOfGas, ErrExecutionReverted
+//   - used gas:
+//     total gas used (including gas being refunded)
+//   - returndata:
+//     the returned data from evm
+//   - concrete execution error:
+//     various **EVM** error which aborts the execution,
+//     e.g. ErrOutOfGas, ErrExecutionReverted
 //
 // However if any consensus issue encountered, return the error directly with
 // nil evm execution result.
@@ -323,11 +331,13 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 
 	// Check clause 6
 	if msg.Value().Sign() > 0 && !st.evm.Context.CanTransfer(st.state, msg.From(), msg.Value()) {
+		fmt.Println("Called CanTransfer with st.state, got ErrInsufficientFundsForTransfer")
 		return nil, fmt.Errorf("%w: address %v", ErrInsufficientFundsForTransfer, msg.From().Hex())
 	}
 
 	// Set up the initial access list.
 	if rules := st.evm.ChainConfig().Rules(st.evm.Context.BlockNumber, st.evm.Context.Random != nil); rules.IsBerlin {
+		fmt.Println("Called PrepareAccessList")
 		st.state.PrepareAccessList(msg.From(), msg.To(), vm.ActivePrecompiles(rules), msg.AccessList())
 	}
 	var (
@@ -338,7 +348,9 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		ret, _, st.gas, vmerr = st.evm.Create(sender, st.data, st.gas, st.value)
 	} else {
 		// Increment the nonce for the next transaction
-		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1, st.firehoseContext)
+		nonce := st.state.GetNonce(sender.Address())
+		fmt.Println("Called GetNonce then SetNonce+1", nonce)
+		st.state.SetNonce(msg.From(), nonce+1, st.firehoseContext)
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	}
 
@@ -361,6 +373,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	} else {
 		fee := new(big.Int).SetUint64(st.gasUsed())
 		fee.Mul(fee, effectiveTip)
+		fmt.Println("Called AddBalance", fee.String())
 		st.state.AddBalance(st.evm.Context.Coinbase, fee, false, st.firehoseContext, firehose.BalanceChangeReason("reward_transaction_fee"))
 	}
 
@@ -374,14 +387,18 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 func (st *StateTransition) refundGas(refundQuotient uint64) {
 	// Apply refund counter, capped to a refund quotient
 	refund := st.gasUsed() / refundQuotient
-	if refund > st.state.GetRefund() {
-		refund = st.state.GetRefund()
+	stateRefund := st.state.GetRefund()
+	fmt.Println("Called GetRefund", stateRefund)
+	if refund > stateRefund {
+		refund = stateRefund
 	}
 	st.gas += refund
 
 	// Return ETH for remaining gas, exchanged at the original rate.
 	remaining := new(big.Int).Mul(new(big.Int).SetUint64(st.gas), st.gasPrice)
+
 	st.state.AddBalance(st.msg.From(), remaining, false, st.firehoseContext, firehose.BalanceChangeReason("gas_refund"))
+	fmt.Println("Called AddBalance", remaining)
 
 	// Also return remaining gas to the block gas counter so it is
 	// available for the next transaction.
