@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 	"testing"
@@ -102,6 +103,7 @@ func TestEIP2200(t *testing.T) {
 			t.Errorf("test %d: gas used mismatch: have %v, want %v", i, used, tt.used)
 		}
 		if refund := vmenv.StateDB.GetRefund(); refund != tt.refund {
+			fmt.Println("Called GetRefund, is not tt.refund")
 			t.Errorf("test %d: gas refund mismatch: have %v, want %v", i, refund, tt.refund)
 		}
 	}

@@ -156,13 +156,16 @@ func gasSStore(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySi
 			fmt.Println("Called SubRefund")
 		} else if value == (common.Hash{}) { // delete slot (2.2.1.2)
 			evm.StateDB.AddRefund(params.NetSstoreClearRefund)
+			fmt.Println("Called AddRefund")
 		}
 	}
 	if original == value {
 		if original == (common.Hash{}) { // reset to original inexistent slot (2.2.2.1)
 			evm.StateDB.AddRefund(params.NetSstoreResetClearRefund)
+			fmt.Println("Called AddRefund")
 		} else { // reset to original existing slot (2.2.2.2)
 			evm.StateDB.AddRefund(params.NetSstoreResetRefund)
+			fmt.Println("Called AddRefund")
 		}
 	}
 	return params.NetSstoreDirtyGas, nil
@@ -191,33 +194,40 @@ func gasSStoreEIP2200(evm *EVM, contract *Contract, stack *Stack, mem *Memory, m
 		y, x    = stack.Back(1), stack.Back(0)
 		current = evm.StateDB.GetState(contract.Address(), x.Bytes32())
 	)
+	fmt.Println("Called GetState", contract.Address().String(), current.String())
 	value := common.Hash(y.Bytes32())
 
 	if current == value { // noop (1)
 		return params.SloadGasEIP2200, nil
 	}
 	original := evm.StateDB.GetCommittedState(contract.Address(), x.Bytes32())
+	fmt.Println("Called GetCommittedState", contract.Address().String(), original.String())
 	if original == current {
 		if original == (common.Hash{}) { // create slot (2.1.1)
 			return params.SstoreSetGasEIP2200, nil
 		}
 		if value == (common.Hash{}) { // delete slot (2.1.2b)
 			evm.StateDB.AddRefund(params.SstoreClearsScheduleRefundEIP2200)
+			fmt.Println("Called AddRefund")
 		}
 		return params.SstoreResetGasEIP2200, nil // write existing slot (2.1.2)
 	}
 	if original != (common.Hash{}) {
 		if current == (common.Hash{}) { // recreate slot (2.2.1.1)
 			evm.StateDB.SubRefund(params.SstoreClearsScheduleRefundEIP2200)
+			fmt.Println("Called SubRefund")
 		} else if value == (common.Hash{}) { // delete slot (2.2.1.2)
 			evm.StateDB.AddRefund(params.SstoreClearsScheduleRefundEIP2200)
+			fmt.Println("Called AddRefund")
 		}
 	}
 	if original == value {
 		if original == (common.Hash{}) { // reset to original inexistent slot (2.2.2.1)
 			evm.StateDB.AddRefund(params.SstoreSetGasEIP2200 - params.SloadGasEIP2200)
+			fmt.Println("Called AddRefund")
 		} else { // reset to original existing slot (2.2.2.2)
 			evm.StateDB.AddRefund(params.SstoreResetGasEIP2200 - params.SloadGasEIP2200)
+			fmt.Println("Called AddRefund")
 		}
 	}
 	return params.SloadGasEIP2200, nil // dirty update (2.2)
@@ -339,9 +349,11 @@ func gasCall(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize
 	)
 	if evm.chainRules.IsEIP158 {
 		if transfersValue && evm.StateDB.Empty(address) {
+			fmt.Println("Called Empty", address.String())
 			gas += params.CallNewAccountGas
 		}
 	} else if !evm.StateDB.Exist(address) {
+		fmt.Println("Called Exists, doesn't", address.String())
 		gas += params.CallNewAccountGas
 	}
 	if transfersValue {
@@ -433,15 +445,19 @@ func gasSelfdestruct(evm *EVM, contract *Contract, stack *Stack, mem *Memory, me
 		if evm.chainRules.IsEIP158 {
 			// if empty and transfers value
 			if evm.StateDB.Empty(address) && evm.StateDB.GetBalance(contract.Address()).Sign() != 0 {
+				fmt.Println("Called Empty and GetBalance", address.String(), contract.Address().String())
 				gas += params.CreateBySelfdestructGas
 			}
 		} else if !evm.StateDB.Exist(address) {
+			fmt.Println("Called Exist, doesn't", address.String())
 			gas += params.CreateBySelfdestructGas
 		}
 	}
 
 	if !evm.StateDB.HasSuicided(contract.Address()) {
+		fmt.Println("Called HasSuicided, is false", contract.Address().String())
 		evm.StateDB.AddRefund(params.SelfdestructRefundGas)
+		fmt.Println("Called AddRefund")
 	}
 	return gas, nil
 }

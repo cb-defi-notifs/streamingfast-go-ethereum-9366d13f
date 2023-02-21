@@ -222,11 +222,11 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 
 			return nil, gas, nil
 		}
-		fmt.Println("Called CreateAccount", addr.String())
 		evm.StateDB.CreateAccount(addr, evm.firehoseContext)
+		fmt.Println("Called CreateAccount", addr.String())
 	}
-	fmt.Println("Called transfer", caller.Address().String(), addr.String(), value.String())
 	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value, evm.firehoseContext)
+	fmt.Println("Called transfer", caller.Address().String(), addr.String(), value.String())
 
 	// Capture the tracer start/end events in debug mode
 	if evm.Config.Debug {
@@ -277,8 +277,8 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			evm.firehoseContext.RecordCallFailed(gas, err.Error())
 		}
 
-		fmt.Println("Called RevertToSnapshot", snapshot)
 		evm.StateDB.RevertToSnapshot(snapshot)
+		fmt.Println("Called RevertToSnapshot", snapshot)
 		if err != ErrExecutionReverted {
 			if evm.firehoseContext.Enabled() {
 				evm.firehoseContext.RecordGasConsume(gas, gas, firehose.FailedExecutionGasChangeReason)
@@ -367,8 +367,8 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			evm.firehoseContext.RecordCallFailed(gas, err.Error())
 		}
 
-		fmt.Println("Called RevertToSnapshot(snapshot)")
 		evm.StateDB.RevertToSnapshot(snapshot)
+		fmt.Println("Called RevertToSnapshot(snapshot)")
 		if err != ErrExecutionReverted {
 			if evm.firehoseContext.Enabled() {
 				evm.firehoseContext.RecordGasConsume(gas, gas, firehose.FailedExecutionGasChangeReason)
@@ -622,8 +622,8 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	// We add this to the access list _before_ taking a snapshot. Even if the creation fails,
 	// the access-list change should not be rolled back
 	if evm.chainRules.IsBerlin {
-		fmt.Println("Called AddAddressToAccessList", address.String())
 		evm.StateDB.AddAddressToAccessList(address)
+		fmt.Println("Called AddAddressToAccessList", address.String())
 	}
 	// Ensure there's no existing contract already at the designated address
 	contractHash := evm.StateDB.GetCodeHash(address)
