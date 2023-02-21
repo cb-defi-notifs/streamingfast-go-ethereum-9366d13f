@@ -536,7 +536,7 @@ func opSload(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]by
 	loc := scope.Stack.peek()
 	hash := common.Hash(loc.Bytes32())
 	val := interpreter.evm.StateDB.GetState(scope.Contract.Address(), hash)
-	fmt.Println("Called GetState", scope.Contract.Address().String(), hash.String(), val.String())
+	fmt.Println("Called GetState from opSload", scope.Contract.Address().String(), hash.String(), val.String())
 	loc.SetBytes(val.Bytes())
 	return nil, nil
 }

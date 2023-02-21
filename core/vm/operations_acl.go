@@ -39,7 +39,7 @@ func makeGasSStoreFunc(clearingRefund uint64) gasFunc {
 			current = evm.StateDB.GetState(contract.Address(), slot)
 			cost    = uint64(0)
 		)
-		fmt.Println("Called GetState", contract.Address().String(), slot.String(), current.String())
+		fmt.Println("Called GetState from GasSStoreFunc", contract.Address().String(), slot.String(), current.String())
 		// Check slot presence in the access list
 		if addrPresent, slotPresent := evm.StateDB.SlotInAccessList(contract.Address(), slot); !slotPresent {
 			fmt.Println("Called SlotInAccessList: slotNotPresent", contract.Address().String(), slot.String())
