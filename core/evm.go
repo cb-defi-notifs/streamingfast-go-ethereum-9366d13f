@@ -17,6 +17,7 @@
 package core
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -120,11 +121,14 @@ func GetHashFn(ref *types.Header, chain ChainContext) func(n uint64) common.Hash
 // CanTransfer checks whether there are enough funds in the address' account to make a transfer.
 // This does not take the necessary gas in to account to make the transfer valid.
 func CanTransfer(db vm.StateDB, addr common.Address, amount *big.Int) bool {
-	return db.GetBalance(addr).Cmp(amount) >= 0
+	bal := db.GetBalance(addr)
+	fmt.Println("Called GetBalance", addr.String(), bal)
+	return bal.Cmp(amount) >= 0
 }
 
 // Transfer subtracts amount from sender and adds amount to recipient using the given Db
 func Transfer(db vm.StateDB, sender, recipient common.Address, amount *big.Int, firehoseContext *firehose.Context) {
+	fmt.Println("calling add and sub balance")
 	db.SubBalance(sender, amount, firehoseContext, firehose.BalanceChangeReason("transfer"))
 	db.AddBalance(recipient, amount, false, firehoseContext, firehose.BalanceChangeReason("transfer"))
 }

@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"fmt"
 	"hash"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -255,8 +256,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 
 		// execute the operation
+		fmt.Println("EXEC", op.String(), callContext.Memory.lastGasCost)
+
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
+			fmt.Println("ERROR")
 			break
 		}
 		pc++
