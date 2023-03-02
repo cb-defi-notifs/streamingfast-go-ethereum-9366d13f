@@ -17,6 +17,7 @@
 package state
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -253,6 +254,7 @@ func (ch accessListAddAccountChange) revert(s *StateDB) {
 		(addr) at this point, since no storage adds can remain when come upon
 		a single (addr) change.
 	*/
+	fmt.Println("deleting address from access list", ch.address.String())
 	s.accessList.DeleteAddress(*ch.address)
 }
 

@@ -256,7 +256,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 
 		// execute the operation
-		fmt.Println("EXEC", op.String(), callContext.Memory.lastGasCost)
+		//fmt.Println("EXEC", op.String(), callContext.Memory.lastGasCost)
 
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
