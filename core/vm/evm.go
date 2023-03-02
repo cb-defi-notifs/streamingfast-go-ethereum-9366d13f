@@ -243,7 +243,6 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			}(gas)
 		}
 	}
-
 	if isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.firehoseContext)
 	} else {
@@ -265,10 +264,18 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			hash := evm.StateDB.GetCodeHash(addrCopy)
 			fmt.Println("Called GetCodeHash", hash.String(), addrCopy.String())
 			contract.SetCallCode(&addrCopy, hash, code)
+			fmt.Println("Calling interpreter run contract with input",
+				contract.Address().String(),
+				common.BytesToHash(contract.Code).String(),
+				common.BytesToHash(input).String())
 			ret, err = evm.interpreter.Run(contract, input, false)
+			if err != nil {
+				fmt.Println("got error", err, "return", common.BytesToHash(ret).String())
+			}
 			gas = contract.Gas
 		}
 	}
+	fmt.Println("err 279", err)
 	// When an error was returned by the EVM or when setting the creation code
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in homestead this also counts for code storage gas errors.
@@ -278,7 +285,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}
 
 		evm.StateDB.RevertToSnapshot(snapshot)
-		fmt.Println("Called RevertToSnapshot", snapshot)
+		fmt.Println("Called RevertToSnapshot 281", snapshot, err)
 		if err != ErrExecutionReverted {
 			if evm.firehoseContext.Enabled() {
 				evm.firehoseContext.RecordGasConsume(gas, gas, firehose.FailedExecutionGasChangeReason)
@@ -368,7 +375,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 		}
 
 		evm.StateDB.RevertToSnapshot(snapshot)
-		fmt.Println("Called RevertToSnapshot(snapshot)")
+		fmt.Println("Called RevertToSnapshot(snapshot) 371", err)
 		if err != ErrExecutionReverted {
 			if evm.firehoseContext.Enabled() {
 				evm.firehoseContext.RecordGasConsume(gas, gas, firehose.FailedExecutionGasChangeReason)
@@ -457,7 +464,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 		}
 
 		evm.StateDB.RevertToSnapshot(snapshot)
-		fmt.Println("Called RevertToSnapshot", snapshot)
+		fmt.Println("Called RevertToSnapshot 460", snapshot, err)
 
 		if err != ErrExecutionReverted {
 			if evm.firehoseContext.Enabled() {
@@ -550,7 +557,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		}
 
 		evm.StateDB.RevertToSnapshot(snapshot)
-		fmt.Println("Called RevertToSnapshot", snapshot)
+		fmt.Println("Called RevertToSnapshot 533", snapshot, err)
 		if err != ErrExecutionReverted {
 			if evm.firehoseContext.Enabled() {
 				evm.firehoseContext.RecordGasConsume(gas, gas, firehose.FailedExecutionGasChangeReason)
@@ -599,6 +606,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 
 		return nil, common.Address{}, gas, ErrDepth
 	}
+	fmt.Println("calling CanTransfer")
 	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
 		fmt.Println("Called CanTransfer, cannot")
 		if evm.firehoseContext.Enabled() {
@@ -700,8 +708,9 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in homestead this also counts for code storage gas errors.
 	if err != nil && (evm.chainRules.IsHomestead || err != ErrCodeStoreOutOfGas) {
+		fmt.Println("HERE", "homestead", evm.chainRules.IsHomestead, "error is", err)
 		evm.StateDB.RevertToSnapshot(snapshot)
-		fmt.Println("Called RevertToSnapshot", snapshot)
+		fmt.Println("Called RevertToSnapshot", snapshot, err)
 		if evm.firehoseContext.Enabled() {
 			evm.firehoseContext.RecordCallFailed(contract.Gas, err.Error())
 		}

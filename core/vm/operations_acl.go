@@ -133,12 +133,14 @@ func gasSLoadEIP2929(evm *EVM, contract *Contract, stack *Stack, mem *Memory, me
 // > Otherwise, charge WARM_STORAGE_READ_COST gas.
 func gasExtCodeCopyEIP2929(evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (uint64, error) {
 	// memory expansion first (dynamic part of pre-2929 implementation)
+	fmt.Println("calling gasExtCodeCopy")
 	gas, err := gasExtCodeCopy(evm, contract, stack, mem, memorySize)
 	if err != nil {
 		return 0, err
 	}
 	addr := common.Address(stack.peek().Bytes20())
 	// Check slot presence in the access list
+	fmt.Println("Calling AddressInAccessList()", addr.String())
 	if !evm.StateDB.AddressInAccessList(addr) {
 		fmt.Println("Called AddressInAccessList(), not present", addr.String())
 		evm.StateDB.AddAddressToAccessList(addr)
