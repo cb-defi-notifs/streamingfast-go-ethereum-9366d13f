@@ -932,10 +932,8 @@ func opPush1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]by
 	*pc += 1
 	if *pc < codeLen {
 		scope.Stack.push(integer.SetUint64(uint64(scope.Contract.Code[*pc])))
-		fmt.Println("pushing")
 	} else {
 		scope.Stack.push(integer.Clear())
-		fmt.Println("clear push stack")
 	}
 	return nil, nil
 }
