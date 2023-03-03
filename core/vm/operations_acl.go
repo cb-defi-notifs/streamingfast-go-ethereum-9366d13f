@@ -115,13 +115,17 @@ func gasSLoadEIP2929(evm *EVM, contract *Contract, stack *Stack, mem *Memory, me
 	loc := stack.peek()
 	slot := common.Hash(loc.Bytes32())
 	// Check slot presence in the access list
-	if _, slotPresent := evm.StateDB.SlotInAccessList(contract.Address(), slot); !slotPresent {
+
+	_, slotPresent := evm.StateDB.SlotInAccessList(contract.Address(), slot)
+	if !slotPresent {
 		fmt.Println("Called SlotInAccessList, not present", contract.Address().String(), slot.String())
 		// If the caller cannot afford the cost, this change will be rolled back
 		// If he does afford it, we can skip checking the same thing later on, during execution
 		evm.StateDB.AddSlotToAccessList(contract.Address(), slot)
 		fmt.Println("Called AddSlotToAccessList", contract.Address().String(), slot.String())
 		return params.ColdSloadCostEIP2929, nil
+	} else {
+		fmt.Println("Called SlotInAccessList, IS present", contract.Address().String(), slot.String())
 	}
 	return params.WarmStorageReadCostEIP2929, nil
 }
