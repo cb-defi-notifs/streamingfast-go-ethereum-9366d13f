@@ -2,6 +2,7 @@ package statefull
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"math/big"
 
@@ -107,6 +108,11 @@ func ApplyMessage(
 	// Create a new context to be used in the EVM environment
 	blockContext := core.NewEVMBlockContext(header, chainContext, &header.Coinbase)
 
+	to := "0x0"
+	if t := msg.To(); t != nil {
+		to = fmt.Sprint(*t)
+	}
+	fmt.Println("applying message, block/from", blockContext.BlockNumber, msg.From(), to)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, state, chainConfig, vm.Config{}, firehoseContext)
@@ -153,6 +159,7 @@ func ApplyMessage(
 func ApplyBorMessage(vmenv vm.EVM, msg Callmsg) (*core.ExecutionResult, error) {
 	initialGas := msg.Gas()
 
+	fmt.Println("applying BOR message, block/from", vmenv.Context.BlockNumber, msg.From())
 	// Apply the transaction to the current state (included in the env)
 	ret, gasLeft, err := vmenv.Call(
 		vm.AccountRef(msg.From()),
