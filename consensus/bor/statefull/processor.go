@@ -112,7 +112,7 @@ func ApplyMessage(
 	if t := msg.To(); t != nil {
 		to = fmt.Sprint(*t)
 	}
-	fmt.Println("applying message, block/from", blockContext.BlockNumber, msg.From(), to)
+	fmt.Println("applying message, block/from/to, firehoseContextEnbled?", blockContext.BlockNumber, msg.From(), to, firehoseContext.Enabled())
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, state, chainConfig, vm.Config{}, firehoseContext)
@@ -131,6 +131,7 @@ func ApplyMessage(
 	}
 
 	gasUsed := initialGas - gasLeft
+	fmt.Println("gas used", gasUsed, "hash", txHash)
 
 	if firehoseContext.Enabled() {
 		blockHash := header.Hash()
