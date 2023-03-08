@@ -46,7 +46,7 @@ jobs:
 
       - name: Generate docker tags/labels from github build context
         id: meta
-        uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
+        uses: docker/metadata-action@v4.3.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # 2 docker tags: `{geth|bsc|...}-latest` and `{git-tag}`
