@@ -37,7 +37,7 @@ git fetch origin
 git fetch polygon
 git fetch bsc
 
-git checkout release/geth-1.10.x-fh2
+git checkout release/geth-1.11.x-fh2
 git checkout release/bsc-1.1.x-fh2
 git checkout release/polygon-0.x-fh2
 ```
@@ -96,7 +96,7 @@ for us, versions that we will manages and deploy.
 Currently supported forks & version and the release branch
 
 - `firehose-v2` - Default branch with all Firehose commits in it, based on Geth `1.9.10` (Ethereum Block Version 2).
-- [release/geth-1.10.x-fh2](https://github.com/streamingfast/go-ethereum/tree/release/geth-1.10.x-fh2) - Ethereum Geth, latest update for this branch is `1.10.7` ([https://github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum)).
+- [release/geth-1.11.x-fh2](https://github.com/streamingfast/go-ethereum/tree/release/geth-1.11.x-fh2) - Ethereum Geth, latest update for this branch is `1.11.3` ([https://github.com/ethereum/go-ethereum](https://github.com/ethereum/go-ethereum)).
 - [release/polygon-0.x-fh2](https://github.com/streamingfast/go-ethereum/tree/release/polygon-0.x-fh2) - Polygon fork (a.k.a Matic), based on Geth `1.10.3`, latest update for this branch is `v0.3.2` ([https://github.com/maticnetwork/bor](https://github.com/maticnetwork/bor)).
 - [release/bsc-1.1.x-fh2](https://github.com/streamingfast/go-ethereum/tree/release/bsc-1.1.x-fh2) - BSC fork (Binance), based on Geth `1.10.22`, latest update for this branch is `v1.1.18` ([https://github.com/binance-chain/bsc](https://github.com/binance-chain/bsc)).
 
@@ -145,7 +145,7 @@ those with your own values.
 First step is to checkout the release branch of the series you are currently
 updating to:
 
-    git checkout release/geth-1.10.x-fh2
+    git checkout release/geth-1.11.x-fh2
     git pull -p
 
 You first fetch the origin repository new data from Git:
@@ -154,16 +154,16 @@ You first fetch the origin repository new data from Git:
 
 Then apply the update
 
-    git merge v1.10.18
+    git merge v1.11.4
 
 Solve conflicts if any. Once all conflicts have been resolved, commit then
 create a tag with release
 
-    git tag geth-v1.10.18-fh2
+    git tag geth-v1.11.4-fh2
 
 Then push all that to the repository:
 
-    git push sf release/geth-1.10.x-fh2 geth-v1.10.18-fh2
+    git push sf release/geth-1.11.x-fh2 geth-v1.11.4-fh2
 
 ### Development
 
