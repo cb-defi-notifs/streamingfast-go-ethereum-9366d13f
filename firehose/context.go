@@ -159,7 +159,7 @@ func (ctx *Context) ExitBlock() {
 	ctx.blockLogIndex = 0
 }
 
-func (ctx *Context) EndBlock(block *types.Block, finalizedBlock *types.Block, totalDifficulty *big.Int) {
+func (ctx *Context) EndBlock(block *types.Block, finalBlockHeader *types.Header, totalDifficulty *big.Int) {
 	ctx.ExitBlock()
 
 	endData := map[string]interface{}{
@@ -168,9 +168,9 @@ func (ctx *Context) EndBlock(block *types.Block, finalizedBlock *types.Block, to
 		"totalDifficulty": (*hexutil.Big)(totalDifficulty),
 	}
 
-	if finalizedBlock != nil {
-		endData["finalizedBlockNum"] = (*hexutil.Big)(finalizedBlock.Header().Number)
-		endData["finalizedBlockHash"] = finalizedBlock.Header().Hash()
+	if finalBlockHeader != nil {
+		endData["finalizedBlockNum"] = (*hexutil.Big)(finalBlockHeader.Number)
+		endData["finalizedBlockHash"] = finalBlockHeader.Hash()
 	}
 
 	ctx.printer.Print("END_BLOCK",

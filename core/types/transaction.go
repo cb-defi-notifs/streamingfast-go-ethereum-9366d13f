@@ -85,6 +85,14 @@ type TxData interface {
 
 	rawSignatureValues() (v, r, s *big.Int)
 	setSignatureValues(chainID, v, r, s *big.Int)
+
+	// effectiveGasPrice computes the gas price paid by the transaction, given
+	// the inclusion block baseFee.
+	//
+	// Unlike other TxData methods, the returned *big.Int should be an independent
+	// copy of the computed value, i.e. callers are allowed to mutate the result.
+	// Method implementations can use 'dst' to store the result.
+	effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int
 }
 
 // EncodeRLP implements rlp.Encoder
@@ -680,7 +688,10 @@ func (*firehoseTxData) copy() TxData           { panic(txDataUpdatedMessage) }
 func (*firehoseTxData) data() []byte           { panic(txDataUpdatedMessage) }
 func (*firehoseTxData) gas() uint64            { panic(txDataUpdatedMessage) }
 func (*firehoseTxData) gasPrice() *big.Int     { panic(txDataUpdatedMessage) }
-func (*firehoseTxData) nonce() uint64          { panic(txDataUpdatedMessage) }
+func (*firehoseTxData) effectiveGasPrice(dst *big.Int, baseFee *big.Int) *big.Int {
+	panic(txDataUpdatedMessage)
+}
+func (*firehoseTxData) nonce() uint64 { panic(txDataUpdatedMessage) }
 func (*firehoseTxData) rawSignatureValues() (v *big.Int, r *big.Int, s *big.Int) {
 	panic(txDataUpdatedMessage)
 }
