@@ -18,7 +18,6 @@ package core
 
 import (
 	"fmt"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -124,14 +123,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), firehoseContext)
-
-	if firehoseContext.Enabled() {
-		// Calculate the total difficulty of the block
-		ptd := p.bc.GetTd(block.ParentHash(), block.NumberU64()-1)
-		td := new(big.Int).Add(block.Difficulty(), ptd)
-
-		firehoseContext.EndBlock(block, td)
-	}
 
 	return receipts, allLogs, *usedGas, nil
 }
