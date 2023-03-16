@@ -489,14 +489,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 
-	if firehoseContext.Enabled() {
-		// Calculate the total difficulty of the block
-		ptd := p.bc.GetTd(block.ParentHash(), block.NumberU64()-1)
-		td := new(big.Int).Add(block.Difficulty(), ptd)
-
-		firehoseContext.EndBlock(block, td)
-	}
-
 	return statedb, receipts, allLogs, *usedGas, nil
 }
 

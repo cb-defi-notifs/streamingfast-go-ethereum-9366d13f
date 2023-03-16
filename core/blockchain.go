@@ -1971,6 +1971,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
 			statedb.StopPrefetcher()
+			if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() {
+				firehoseContext.RecordCancelBlock(block, err)
+			}
 			return it.index, err
 		}
 		// Update the metrics touched during block processing
@@ -1990,9 +1993,20 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 				log.Error("validate state failed", "error", err)
 				bc.reportBlock(block, receipts, err)
 				statedb.StopPrefetcher()
+				if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() {
+					firehoseContext.RecordCancelBlock(block, err)
+				}
 				return it.index, err
 			}
 		}
+
+		if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() {
+			// Calculate the total difficulty of the block
+			ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
+			td := new(big.Int).Add(block.Difficulty(), ptd)
+			firehoseContext.EndBlock(block, td)
+		}
+
 		bc.cacheReceipts(block.Hash(), receipts)
 		bc.cacheBlock(block.Hash(), block)
 		proctime := time.Since(start)
