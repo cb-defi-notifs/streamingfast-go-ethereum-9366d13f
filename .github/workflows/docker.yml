@@ -49,10 +49,10 @@ jobs:
         uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # 2 docker tags: `{geth|bsc|...}-latest` and `{git-tag}`
+          # We tag latest only release of the form <variant>-v<major>.<minor>.<patch>-fh2.1 so "rc/beta" version are not flagged as latest
+          # - 2 docker tags: `{geth|bsc|...}-latest` and `{git-tag}`
           tags: |
             type=ref,event=tag,priority=1000
-            # We tag latest only release of the form <variant>-v<major>.<minor>.<patch>-fh2.1 so "rc/beta" version are not flagged as latest
             type=match,pattern=^(.*)-v\d+.\d+.\d+-fh,group=1,suffix=-latest-fh2
           flavor: |
             latest=false
