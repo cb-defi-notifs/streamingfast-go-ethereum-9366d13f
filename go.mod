@@ -66,10 +66,10 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/tyler-smith/go-bip39 v1.0.1-0.20181017060643-dbb3b84ba2ef
 	github.com/xsleonard/go-merkle v1.1.0
-	go.uber.org/atomic v1.7.0
 	go.opentelemetry.io/otel v1.2.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.2.0
 	go.opentelemetry.io/otel/sdk v1.2.0
+	go.uber.org/atomic v1.7.0
 	go.uber.org/goleak v1.1.12
 	golang.org/x/crypto v0.0.0-20220507011949-2cf3adece122
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
