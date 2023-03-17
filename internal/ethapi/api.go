@@ -999,19 +999,19 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	if firehoseContext.Enabled() {
 		firehoseContext.StartTransactionRaw(
 			dmUnsetTrxHash,
-			msg.To(),
-			msg.Value(),
+			msg.To,
+			msg.Value,
 			nil, nil, nil,
-			msg.Gas(),
-			msg.GasPrice(),
-			msg.Nonce(),
-			msg.Data(),
+			msg.GasLimit,
+			msg.GasPrice,
+			msg.Nonce,
+			msg.Data,
 			nil,
 			nil,
 			nil,
 			0,
 		)
-		firehoseContext.RecordTrxFrom(msg.From())
+		firehoseContext.RecordTrxFrom(msg.From)
 	}
 
 	// Execute the message.
@@ -1054,9 +1054,8 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		receipt.TxHash = dmUnsetTrxHash
 		receipt.GasUsed = gasUsed
 		// if the transaction created a contract, store the creation address in the receipt.
-		if msg.To() == nil {
-			// FIXME (dm): This was `crypto.CreateAddress(vmenv.TxContext.Origin, tx.Nonce())`, is `tx.Nonce()` equivalent to `msg.Nonce()`?
-			receipt.ContractAddress = crypto.CreateAddress(evm.TxContext.Origin, msg.Nonce())
+		if msg.To == nil {
+			receipt.ContractAddress = crypto.CreateAddress(evm.TxContext.Origin, msg.Nonce)
 		}
 		// Set the receipt logs and create a bloom for filtering
 		receipt.Logs = state.GetLogs(dmUnsetTrxHash, header.Number.Uint64(), header.Hash())
@@ -1073,7 +1072,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	// us will need to understand that a nil error and nil result means send me everything. For now, it will
 	// simply fail, might even be the "good condition" to do.
 	if err != nil {
-		return result, fmt.Errorf("err: %w (supplied gas %d)", err, msg.Gas())
+		return result, fmt.Errorf("err: %w (supplied gas %d)", err, msg.GasLimit)
 	}
 	return result, nil
 }
@@ -1564,7 +1563,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		if err != nil {
 			return nil, 0, nil, err
 		}
-		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas()))
+		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
 		}

@@ -1880,30 +1880,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			firehoseContext.EndBlock(block, finalBlockHeader, td)
 		}
 
-		// if firehoseContext.Enabled() {
-		// 	// Calculate the total difficulty of the block
-		// 	ptd := p.bc.GetTd(block.ParentHash(), block.NumberU64()-1)
-		// 	difficulty := block.Difficulty()
-		// 	if difficulty == nil {
-		// 		difficulty = common.Big0
-		// 	}
-
-		// 	td := ptd
-		// 	if ptd != nil {
-		// 		td = new(big.Int).Add(difficulty, ptd)
-		// 	}
-
-		// 	finalBlockHeader := p.bc.CurrentFinalBlock()
-
-		// 	if finalBlockHeader != nil && firehose.SyncingBehindFinalized() {
-		// 		// if beaconFinalizedBlockNum is in the future, the 'finalizedBlock' will not progress until we reach it.
-		// 		// we don't want to advertise a super old finalizedBlock when reprocessing.
-		// 		finalBlockHeader = nil
-		// 	}
-
-		// 	firehoseContext.EndBlock(block, finalBlockHeader, td)
-		// }
-
 		proctime := time.Since(start)
 
 		// Update the metrics touched during block validation
