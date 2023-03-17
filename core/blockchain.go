@@ -1827,6 +1827,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
 			atomic.StoreUint32(&followupInterrupt, 1)
+			if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() {
+				firehoseContext.RecordCancelBlock(block, err)
+			}
 			return it.index, err
 		}
 
@@ -1848,8 +1851,59 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
 			bc.reportBlock(block, receipts, err)
 			atomic.StoreUint32(&followupInterrupt, 1)
+			if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() {
+				firehoseContext.RecordCancelBlock(block, err)
+			}
 			return it.index, err
 		}
+
+		if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() {
+			// Calculate the total difficulty of the block
+			ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
+			difficulty := block.Difficulty()
+			if difficulty == nil {
+				difficulty = common.Big0
+			}
+
+			td := ptd
+			if ptd != nil {
+				td = new(big.Int).Add(difficulty, ptd)
+			}
+
+			finalBlockHeader := bc.CurrentFinalBlock()
+			if finalBlockHeader != nil && firehose.SyncingBehindFinalized() {
+				// If beaconFinalizedBlockNum is in the future, the 'finalizedBlock' will not progress until we reach it.
+				// we don't want to advertise a super old finalizedBlock when reprocessing.
+				finalBlockHeader = nil
+			}
+
+			firehoseContext.EndBlock(block, finalBlockHeader, td)
+		}
+
+		// if firehoseContext.Enabled() {
+		// 	// Calculate the total difficulty of the block
+		// 	ptd := p.bc.GetTd(block.ParentHash(), block.NumberU64()-1)
+		// 	difficulty := block.Difficulty()
+		// 	if difficulty == nil {
+		// 		difficulty = common.Big0
+		// 	}
+
+		// 	td := ptd
+		// 	if ptd != nil {
+		// 		td = new(big.Int).Add(difficulty, ptd)
+		// 	}
+
+		// 	finalBlockHeader := p.bc.CurrentFinalBlock()
+
+		// 	if finalBlockHeader != nil && firehose.SyncingBehindFinalized() {
+		// 		// if beaconFinalizedBlockNum is in the future, the 'finalizedBlock' will not progress until we reach it.
+		// 		// we don't want to advertise a super old finalizedBlock when reprocessing.
+		// 		finalBlockHeader = nil
+		// 	}
+
+		// 	firehoseContext.EndBlock(block, finalBlockHeader, td)
+		// }
+
 		proctime := time.Since(start)
 
 		// Update the metrics touched during block validation

@@ -180,6 +180,17 @@ func (ctx *Context) EndBlock(block *types.Block, finalBlockHeader *types.Header,
 	)
 }
 
+func (ctx *Context) RecordCancelBlock(block *types.Block, err error) {
+	if ctx == nil {
+		return
+	}
+	ctx.printer.Print("CANCEL_BLOCK",
+		Uint64(block.NumberU64()),
+		err.Error(),
+	)
+	ctx.ExitBlock()
+}
+
 // Transaction methods
 
 func (ctx *Context) StartTransaction(tx *types.Transaction, baseFee *big.Int) {

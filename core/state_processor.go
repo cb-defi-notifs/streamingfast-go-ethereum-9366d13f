@@ -135,30 +135,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), withdrawals, firehoseContext)
 
-	if firehoseContext.Enabled() {
-		// Calculate the total difficulty of the block
-		ptd := p.bc.GetTd(block.ParentHash(), block.NumberU64()-1)
-		difficulty := block.Difficulty()
-		if difficulty == nil {
-			difficulty = common.Big0
-		}
-
-		td := ptd
-		if ptd != nil {
-			td = new(big.Int).Add(difficulty, ptd)
-		}
-
-		finalBlockHeader := p.bc.CurrentFinalBlock()
-
-		if finalBlockHeader != nil && firehose.SyncingBehindFinalized() {
-			// if beaconFinalizedBlockNum is in the future, the 'finalizedBlock' will not progress until we reach it.
-			// we don't want to advertise a super old finalizedBlock when reprocessing.
-			finalBlockHeader = nil
-		}
-
-		firehoseContext.EndBlock(block, finalBlockHeader, td)
-	}
-
 	return receipts, allLogs, *usedGas, nil
 }
 
