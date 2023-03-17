@@ -36,6 +36,8 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Build Binary for ${{matrix.os}}
+        env:
+          CGO_ENABLED: "0"
         run: |
           go mod download
           make geth
