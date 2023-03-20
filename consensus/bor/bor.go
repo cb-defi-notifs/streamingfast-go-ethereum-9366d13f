@@ -299,6 +299,14 @@ func (c *Bor) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Head
 	return c.verifyHeader(chain, header, nil)
 }
 
+func (c *Bor) GetSpanner() Spanner {
+	return c.spanner
+}
+
+func (c *Bor) SetSpanner(spanner Spanner) {
+	c.spanner = spanner
+}
+
 // VerifyHeaders is similar to VerifyHeader, but verifies a batch of headers. The
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
@@ -453,6 +461,43 @@ func (c *Bor) verifyCascadingFields(chain consensus.ChainHeaderReader, header *t
 	snap, err := c.snapshot(chain, number-1, header.ParentHash, parents)
 	if err != nil {
 		return err
+	}
+
+	// Verify the validator list match the local contract
+	if IsSprintStart(number+1, c.config.CalculateSprint(number)) {
+		parentBlockNumber := number - 1
+
+		var newValidators []*valset.Validator
+
+		var err error
+
+		for newValidators, err = c.spanner.GetCurrentValidators(context.Background(), chain.GetHeaderByNumber(parentBlockNumber).Hash(), number+1); err != nil && parentBlockNumber > 0; {
+			parentBlockNumber--
+		}
+
+		if err != nil {
+			return errUnknownValidators
+		}
+
+		sort.Sort(valset.ValidatorsByAddress(newValidators))
+
+		headerVals, err := valset.ParseValidators(header.Extra[extraVanity : len(header.Extra)-extraSeal])
+
+		if err != nil {
+			return err
+		}
+
+		sort.Sort(valset.ValidatorsByAddress(headerVals))
+
+		if len(newValidators) != len(headerVals) {
+			return errInvalidSpanValidators
+		}
+
+		for i, val := range newValidators {
+			if !bytes.Equal(val.HeaderBytes(), headerVals[i].HeaderBytes()) {
+				return errInvalidSpanValidators
+			}
+		}
 	}
 
 	// verify the validator list in the last sprint block
@@ -822,7 +867,7 @@ func (c *Bor) FinalizeAndAssemble(ctx context.Context, chain consensus.ChainHead
 	if IsSprintStart(headerNumber, c.config.CalculateSprint(headerNumber)) {
 		cx := statefull.ChainContext{Chain: chain, Bor: c}
 
-		tracing.Exec(finalizeCtx, "bor.checkAndCommitSpan", func(ctx context.Context, span trace.Span) {
+		tracing.Exec(finalizeCtx, "", "bor.checkAndCommitSpan", func(ctx context.Context, span trace.Span) {
 			// check and commit span
 			err = c.checkAndCommitSpan(finalizeCtx, state, header, cx, firehoseContext)
 		})
@@ -833,7 +878,7 @@ func (c *Bor) FinalizeAndAssemble(ctx context.Context, chain consensus.ChainHead
 		}
 
 		if c.HeimdallClient != nil {
-			tracing.Exec(finalizeCtx, "bor.checkAndCommitSpan", func(ctx context.Context, span trace.Span) {
+			tracing.Exec(finalizeCtx, "", "bor.checkAndCommitSpan", func(ctx context.Context, span trace.Span) {
 				// commit states
 				stateSyncData, err = c.CommitStates(finalizeCtx, state, header, cx, firehoseContext)
 			})
@@ -845,7 +890,7 @@ func (c *Bor) FinalizeAndAssemble(ctx context.Context, chain consensus.ChainHead
 		}
 	}
 
-	tracing.Exec(finalizeCtx, "bor.changeContractCodeIfNeeded", func(ctx context.Context, span trace.Span) {
+	tracing.Exec(finalizeCtx, "", "bor.changeContractCodeIfNeeded", func(ctx context.Context, span trace.Span) {
 		err = c.changeContractCodeIfNeeded(headerNumber, state, firehoseContext)
 	})
 
@@ -855,7 +900,7 @@ func (c *Bor) FinalizeAndAssemble(ctx context.Context, chain consensus.ChainHead
 	}
 
 	// No block rewards in PoA, so the state remains as it is
-	tracing.Exec(finalizeCtx, "bor.IntermediateRoot", func(ctx context.Context, span trace.Span) {
+	tracing.Exec(finalizeCtx, "", "bor.IntermediateRoot", func(ctx context.Context, span trace.Span) {
 		header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 	})
 

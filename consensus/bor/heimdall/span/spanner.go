@@ -117,7 +117,7 @@ func (c *ChainSpanner) GetCurrentValidators(ctx context.Context, headerHash comm
 		Data: &msgData,
 	}, blockNr, nil)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	var (
