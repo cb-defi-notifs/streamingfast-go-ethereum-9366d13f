@@ -1151,7 +1151,9 @@ LOOP:
 			log.Debug("commitWork abort", "err", err)
 			return
 		case errors.Is(err, errBlockInterruptedByRecommit):
+			fallthrough
 		case errors.Is(err, errBlockInterruptedByTimeout):
+			fallthrough
 		case errors.Is(err, errBlockInterruptedByOutOfGas):
 			// break the loop to get the best work
 			log.Debug("commitWork finish", "reason", err)
