@@ -44,7 +44,6 @@ func (s Storage) String() (str string) {
 	for key, value := range s {
 		str += fmt.Sprintf("%X : %X\n", key, value)
 	}
-
 	return
 }
 
@@ -53,7 +52,6 @@ func (s Storage) Copy() Storage {
 	for key, value := range s {
 		cpy[key] = value
 	}
-
 	return cpy
 }
 
@@ -69,13 +67,6 @@ type stateObject struct {
 	data     types.StateAccount
 	db       *StateDB
 
-	// DB error.
-	// State objects are used by the consensus core and VM which are
-	// unable to deal with database-level errors. Any error that occurs
-	// during a database read is memoized here and will eventually be returned
-	// by StateDB.Commit.
-	dbErr error
-
 	// Write caches.
 	trie Trie // storage trie, which becomes non-nil on first access
 	code Code // contract bytecode, which gets set when code is loaded
@@ -85,7 +76,7 @@ type stateObject struct {
 	dirtyStorage   Storage // Storage entries that have been modified in the current transaction execution
 
 	// Cache flags.
-	// When an object is marked suicided it will be delete from the trie
+	// When an object is marked suicided it will be deleted from the trie
 	// during the "update" phase of the state transition.
 	dirtyCode bool // true if the code was updated
 	suicided  bool
@@ -122,13 +113,6 @@ func newObject(db *StateDB, address common.Address, data types.StateAccount) *st
 // EncodeRLP implements rlp.Encoder.
 func (s *stateObject) EncodeRLP(w io.Writer) error {
 	return rlp.Encode(w, &s.data)
-}
-
-// setError remembers the first non-nil error it is called with.
-func (s *stateObject) setError(err error) {
-	if s.dbErr == nil {
-		s.dbErr = err
-	}
 }
 
 func (s *stateObject) markSuicided() {
@@ -215,7 +199,7 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 		start := time.Now()
 		tr, err := s.getTrie(db)
 		if err != nil {
-			s.setError(err)
+			s.db.setError(err)
 			return common.Hash{}
 		}
 		enc, err = tr.TryGet(key.Bytes())
@@ -223,7 +207,7 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			s.db.StorageReads += time.Since(start)
 		}
 		if err != nil {
-			s.setError(err)
+			s.db.setError(err)
 			return common.Hash{}
 		}
 	}
@@ -231,7 +215,7 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 	if len(enc) > 0 {
 		_, content, _, err := rlp.Split(enc)
 		if err != nil {
-			s.setError(err)
+			s.db.setError(err)
 		}
 		value.SetBytes(content)
 	}
@@ -302,7 +286,7 @@ func (s *stateObject) updateTrie(db Database) (Trie, error) {
 	)
 	tr, err := s.getTrie(db)
 	if err != nil {
-		s.setError(err)
+		s.db.setError(err)
 		return nil, err
 	}
 	// Insert all the pending updates into the trie
@@ -317,7 +301,7 @@ func (s *stateObject) updateTrie(db Database) (Trie, error) {
 		var v []byte
 		if (value == common.Hash{}) {
 			if err := tr.TryDelete(key[:]); err != nil {
-				s.setError(err)
+				s.db.setError(err)
 				return nil, err
 			}
 			s.db.StorageDeleted += 1
@@ -325,7 +309,7 @@ func (s *stateObject) updateTrie(db Database) (Trie, error) {
 			// Encoding []byte cannot fail, ok to ignore the error.
 			v, _ = rlp.EncodeToBytes(common.TrimLeftZeroes(value[:]))
 			if err := tr.TryUpdate(key[:], v); err != nil {
-				s.setError(err)
+				s.db.setError(err)
 				return nil, err
 			}
 			s.db.StorageUpdated += 1
@@ -357,7 +341,6 @@ func (s *stateObject) updateTrie(db Database) (Trie, error) {
 func (s *stateObject) updateRoot(db Database) {
 	tr, err := s.updateTrie(db)
 	if err != nil {
-		s.setError(fmt.Errorf("updateRoot (%x) error: %w", s.address, err))
 		return
 	}
 	// If nothing changed, don't bother with hashing anything
@@ -378,9 +361,6 @@ func (s *stateObject) commitTrie(db Database) (*trie.NodeSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.dbErr != nil {
-		return nil, s.dbErr
-	}
 	// If nothing changed, don't bother with committing anything
 	if tr == nil {
 		return nil, nil
@@ -391,7 +371,7 @@ func (s *stateObject) commitTrie(db Database) (*trie.NodeSet, error) {
 	}
 	root, nodes := tr.Commit(false)
 	s.data.Root = root
-	return nodes, err
+	return nodes, nil
 }
 
 // AddBalance adds amount to s's balance.
@@ -467,7 +447,7 @@ func (s *stateObject) Code(db Database) []byte {
 	}
 	code, err := db.ContractCode(s.addrHash, common.BytesToHash(s.CodeHash()))
 	if err != nil {
-		s.setError(fmt.Errorf("can't load code hash %x: %v", s.CodeHash(), err))
+		s.db.setError(fmt.Errorf("can't load code hash %x: %v", s.CodeHash(), err))
 	}
 	s.code = code
 	return code
@@ -485,7 +465,7 @@ func (s *stateObject) CodeSize(db Database) int {
 	}
 	size, err := db.ContractCodeSize(s.addrHash, common.BytesToHash(s.CodeHash()))
 	if err != nil {
-		s.setError(fmt.Errorf("can't load code size %x: %v", s.CodeHash(), err))
+		s.db.setError(fmt.Errorf("can't load code size %x: %v", s.CodeHash(), err))
 	}
 	return size
 }
@@ -537,11 +517,4 @@ func (s *stateObject) Balance() *big.Int {
 
 func (s *stateObject) Nonce() uint64 {
 	return s.data.Nonce
-}
-
-// Value is never called, but must be present to allow stateObject to be used
-// as a vm.Account interface that also satisfies the vm.ContractRef
-// interface. Interfaces are awesome.
-func (s *stateObject) Value() *big.Int {
-	panic("Value on stateObject should never be called")
 }
