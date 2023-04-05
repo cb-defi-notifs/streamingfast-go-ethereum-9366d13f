@@ -173,15 +173,20 @@ func (ctx *Context) EndBlock(block *types.Block, totalDifficulty *big.Int) {
 	)
 }
 
-func (ctx *Context) RecordCancelBlock(block *types.Block, err error) {
+// CancelBlock emit a Firehose CANCEL_BLOCK event that tells the console reader to discard any
+// accumulated block's data and start over. This happens on certains error conditions where the block
+// is actually invalid and will be re-processed by the chain so we should not record it.
+func (ctx *Context) CancelBlock(block *types.Block, err error) {
 	if ctx == nil {
 		return
 	}
+
+	ctx.ExitBlock()
+
 	ctx.printer.Print("CANCEL_BLOCK",
 		Uint64(block.NumberU64()),
 		err.Error(),
 	)
-	ctx.ExitBlock()
 }
 
 // Transaction methods
