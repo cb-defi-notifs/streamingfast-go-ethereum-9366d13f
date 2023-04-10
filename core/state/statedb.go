@@ -252,6 +252,7 @@ func (s *StateDB) StopPrefetcher() {
 	s.prefetcherLock.Lock()
 	if s.prefetcher != nil {
 		s.prefetcher.close()
+		s.prefetcher = nil
 	}
 	s.prefetcherLock.Unlock()
 }
