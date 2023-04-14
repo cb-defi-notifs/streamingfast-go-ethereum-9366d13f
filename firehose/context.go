@@ -149,10 +149,10 @@ func (ctx *Context) FinalizeBlock(block *types.Block) {
 	ctx.printer.Print("FINALIZE_BLOCK", Uint64(block.NumberU64()))
 }
 
-// ExitBlock is used when an abnormal condition is encountered while processing
+// exitBlock is used when an abnormal condition is encountered while processing
 // transactions and we must end the block processing right away, resetting the start
 // along the way.
-func (ctx *Context) ExitBlock() {
+func (ctx *Context) exitBlock() {
 	if !ctx.inBlock.CAS(true, false) {
 		panic("exiting a block while not already within a block scope")
 	}
@@ -160,7 +160,7 @@ func (ctx *Context) ExitBlock() {
 }
 
 func (ctx *Context) EndBlock(block *types.Block, finalBlockHeader *types.Header, totalDifficulty *big.Int) {
-	ctx.ExitBlock()
+	ctx.exitBlock()
 
 	endData := map[string]interface{}{
 		"header":          block.Header(),
@@ -188,7 +188,11 @@ func (ctx *Context) CancelBlock(block *types.Block, err error) {
 		return
 	}
 
-	ctx.ExitBlock()
+	// There is some particular runtime code path that could trigger a CANCEL_BLOCK without having started
+	// one, it's ok, the reader is resistant to such and here, we simply don't call `ExitBlock`.
+	if ctx.inBlock.Load() {
+		ctx.exitBlock()
+	}
 
 	ctx.printer.Print("CANCEL_BLOCK",
 		Uint64(block.NumberU64()),
@@ -342,20 +346,6 @@ func (ctx *Context) RecordTrxFrom(from common.Address) {
 	ctx.printer.Print("TRX_FROM",
 		Addr(from),
 	)
-}
-
-func (ctx *Context) RecordFailedTransaction(err error) {
-	if ctx == nil {
-		return
-	}
-
-	ctx.printer.Print("FAILED_APPLY_TRX",
-		err.Error(),
-		Uint64(ctx.totalOrderingCounter.Inc()),
-	)
-	if !ctx.inTransaction.CAS(true, false) {
-		panic("exiting a transaction while not already within a transaction scope")
-	}
 }
 
 func (ctx *Context) EndTransaction(receipt *types.Receipt) {

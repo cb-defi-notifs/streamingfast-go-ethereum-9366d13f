@@ -87,11 +87,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 		msg, err := TransactionToMessage(tx, types.MakeSigner(p.config, header.Number), header.BaseFee)
 		if err != nil {
-			if firehoseContext.Enabled() {
-				firehoseContext.RecordFailedTransaction(err)
-				firehoseContext.ExitBlock()
-			}
-
+			// Trapped later at 'Process' call site at which point the block is canceled
 			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 
@@ -102,11 +98,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		statedb.SetTxContext(tx.Hash(), i)
 		receipt, err := applyTransaction(msg, p.config, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, firehoseContext)
 		if err != nil {
-			if firehoseContext.Enabled() {
-				firehoseContext.RecordFailedTransaction(err)
-				firehoseContext.ExitBlock()
-			}
-
+			// Trapped later at 'Process' call site at which point the block is canceled
 			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 
@@ -129,6 +121,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// Fail if Shanghai not enabled and len(withdrawals) is non-zero.
 	withdrawals := block.Withdrawals()
 	if len(withdrawals) > 0 && !p.config.IsShanghai(block.Time()) {
+		// Trapped later at 'Process' call site at which point the block is canceled
 		return nil, nil, 0, fmt.Errorf("withdrawals before shanghai")
 	}
 
