@@ -429,6 +429,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	for i, tx := range block.Transactions() {
 		if isPoSA {
 			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
+				// Trapped later at 'Process' call site at which point the block is canceled
 				bloomProcessors.Close()
 				return statedb, nil, nil, 0, err
 			} else if isSystemTx {
@@ -439,6 +440,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 		msg, err := tx.AsMessage(signer, header.BaseFee)
 		if err != nil {
+			// Trapped later at 'Process' call site at which point the block is canceled
 			bloomProcessors.Close()
 			return statedb, nil, nil, 0, err
 		}
@@ -451,11 +453,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, bloomProcessors)
 		if err != nil {
-			if firehoseContext.Enabled() {
-				firehoseContext.RecordFailedTransaction(err)
-				firehoseContext.ExitBlock()
-			}
-
+			// Trapped later at 'Process' call site at which point the block is canceled
 			bloomProcessors.Close()
 			return statedb, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
@@ -483,6 +481,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	err := p.engine.Finalize(p.bc, header, statedb, &commonTxs, block.Uncles(), &receipts, &systemTxs, usedGas, firehoseContext)
 	if err != nil {
+		// Trapped later at 'Process' call site at which point the block is canceled
 		return statedb, receipts, allLogs, *usedGas, err
 	}
 	for _, receipt := range receipts {
