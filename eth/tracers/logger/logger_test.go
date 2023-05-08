@@ -57,7 +57,7 @@ func (*dummyStatedb) SetState(_ common.Address, _ common.Hash, _ common.Hash, fi
 func TestStoreCapture(t *testing.T) {
 	var (
 		logger   = NewStructLogger(nil)
-		env      = vm.NewEVM(vm.BlockContext{}, vm.TxContext{}, &dummyStatedb{}, params.TestChainConfig, vm.Config{Debug: true, Tracer: logger}, firehose.NoOpContext)
+		env      = vm.NewEVM(vm.BlockContext{}, vm.TxContext{}, &dummyStatedb{}, params.TestChainConfig, vm.Config{Tracer: logger}, firehose.NoOpContext)
 		contract = vm.NewContract(&dummyContractRef{}, &dummyContractRef{}, new(big.Int), 100000, firehose.NoOpContext)
 	)
 	contract.Code = []byte{byte(vm.PUSH1), 0x1, byte(vm.PUSH1), 0x0, byte(vm.SSTORE)}
