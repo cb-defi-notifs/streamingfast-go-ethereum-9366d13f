@@ -53,6 +53,8 @@ type (
 func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	var precompiles map[common.Address]PrecompiledContract
 	switch {
+	case evm.chainRules.IsLuban:
+		precompiles = PrecompiledContractsLuban
 	case evm.chainRules.IsPlanck:
 		precompiles = PrecompiledContractsPlanck
 	case evm.chainRules.IsMoran:
@@ -296,7 +298,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			}
 		}
 		// TODO: consider clearing up unused snapshots:
-		//} else {
+		// } else {
 		//	evm.StateDB.DiscardSnapshot(snapshot)
 	}
 

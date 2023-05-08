@@ -117,7 +117,7 @@ func (ctx *Context) RecordGenesisBlock(block *types.Block, recordGenesisAlloc fu
 		return
 	}
 
-	if ctx.inBlock.Load() == true {
+	if ctx.inBlock.Load() {
 		panic("trying to record genesis block while in block context")
 	}
 
@@ -130,11 +130,11 @@ func (ctx *Context) RecordGenesisBlock(block *types.Block, recordGenesisAlloc fu
 	recordGenesisAlloc(ctx)
 	ctx.EndTransaction(&types.Receipt{PostState: root[:]})
 	ctx.FinalizeBlock(block)
-	ctx.EndBlock(block, block.Difficulty())
+	ctx.EndBlock(block, nil, block.Difficulty())
 }
 
 func (ctx *Context) StartBlock(block *types.Block) {
-	if !ctx.inBlock.CAS(false, true) {
+	if !ctx.inBlock.CompareAndSwap(false, true) {
 		panic("entering a block while already in a block scope")
 	}
 
@@ -153,23 +153,36 @@ func (ctx *Context) FinalizeBlock(block *types.Block) {
 // transactions and we must end the block processing right away, resetting the start
 // along the way.
 func (ctx *Context) exitBlock() {
-	if !ctx.inBlock.CAS(true, false) {
+	if !ctx.inBlock.CompareAndSwap(true, false) {
 		panic("exiting a block while not already within a block scope")
 	}
 	ctx.blockLogIndex = 0
 }
 
-func (ctx *Context) EndBlock(block *types.Block, totalDifficulty *big.Int) {
+func (ctx *Context) EndBlock(block *types.Block, finalBlockHeader *types.Header, totalDifficulty *big.Int) {
 	ctx.exitBlock()
+
+	endData := map[string]interface{}{
+		"header":          block.Header(),
+		"uncles":          block.Body().Uncles,
+		"totalDifficulty": (*hexutil.Big)(totalDifficulty),
+	}
+
+	// BSC engine, when hard-fork enabling finality is not active, returns the genesis block
+	// of the chain as the currently finalized block. In Firehose context, we don't want to
+	// have the genesis block being the last final block as it would keep all blocks ever
+	// produced in memory.
+	//
+	// So if finalized header is the genesis block, skip emitting a finalized event to firehose
+	if finalBlockHeader != nil && finalBlockHeader.Number.Uint64() != 0 {
+		endData["finalizedBlockNum"] = (*hexutil.Big)(finalBlockHeader.Number)
+		endData["finalizedBlockHash"] = finalBlockHeader.Hash()
+	}
 
 	ctx.printer.Print("END_BLOCK",
 		Uint64(block.NumberU64()),
 		Uint64(uint64(block.Size())),
-		JSON(map[string]interface{}{
-			"header":          block.Header(),
-			"uncles":          block.Body().Uncles,
-			"totalDifficulty": (*hexutil.Big)(totalDifficulty),
-		}),
+		JSON(endData),
 	)
 }
 
@@ -316,7 +329,7 @@ func (ctx *Context) StartTransactionRaw(
 }
 
 func (ctx *Context) openTransaction() {
-	if !ctx.inTransaction.CAS(false, true) {
+	if !ctx.inTransaction.CompareAndSwap(false, true) {
 		panic("entering a transaction while already in a transaction scope")
 	}
 }
@@ -341,7 +354,7 @@ func (ctx *Context) EndTransaction(receipt *types.Receipt) {
 		return
 	}
 
-	if !ctx.inTransaction.CAS(true, false) {
+	if !ctx.inTransaction.CompareAndSwap(true, false) {
 		panic("exiting a transaction while not already within a transaction scope")
 	}
 
@@ -679,8 +692,8 @@ func (ctx *Context) RecordTrxPool(eventType string, tx *types.Transaction, err e
 	signer := types.LatestSignerForChainID(tx.ChainId())
 
 	fromAsString := "."
-	from, err := types.Sender(signer, tx)
-	if err == nil {
+	from, senderErr := types.Sender(signer, tx)
+	if senderErr == nil {
 		fromAsString = Addr(from)
 	}
 
