@@ -47,30 +47,9 @@ func SyncContext() *Context {
 	return syncContext
 }
 
-// Context is a block level data container used throughout firehose instrumentation to
-// keep active state about current instrumentation. This contains method to deal with
-// block, transaction and call metadata required for proper functionning of Firehose
-// code.
-type Context struct {
-	printer Printer
-
-	blockLogIndex   uint64
-	activeCallIndex string
-	nextCallIndex   uint64
-	callIndexStack  *ExtendedStack
-
-	seenBlock            *atomic.Bool
-	inBlock              *atomic.Bool
-	inTransaction        *atomic.Bool
-	totalOrderingCounter *atomic.Uint64
-}
-
 func NewContext(printer Printer) *Context {
 	ctx := &Context{
 		printer: printer,
-
-		activeCallIndex: "0",
-		callIndexStack:  &ExtendedStack{},
 
 		seenBlock:            atomic.NewBool(false),
 		inBlock:              atomic.NewBool(false),
@@ -78,9 +57,46 @@ func NewContext(printer Printer) *Context {
 		totalOrderingCounter: atomic.NewUint64(0),
 	}
 
-	ctx.callIndexStack.Push(ctx.activeCallIndex)
+	ctx.resetBlock()
+	ctx.resetTransaction()
 
 	return ctx
+}
+
+// Context is a block level data container used throughout firehose instrumentation to
+// keep active state about current instrumentation. This contains method to deal with
+// block, transaction and call metadata required for proper functionning of Firehose
+// code.
+type Context struct {
+	printer Printer
+
+	// Global state
+	seenBlock *atomic.Bool
+
+	// Block state
+	inBlock              *atomic.Bool
+	blockLogIndex        uint64
+	totalOrderingCounter *atomic.Uint64
+
+	// Transaction state
+	inTransaction   *atomic.Bool
+	activeCallIndex string
+	nextCallIndex   uint64
+	callIndexStack  *ExtendedStack
+}
+
+func (ctx *Context) resetBlock() {
+	ctx.inBlock.Store(false)
+	ctx.blockLogIndex = 0
+	ctx.totalOrderingCounter.Store(0)
+}
+
+func (ctx *Context) resetTransaction() {
+	ctx.inTransaction.Store(false)
+	ctx.nextCallIndex = 0
+	ctx.activeCallIndex = "0"
+	ctx.callIndexStack = &ExtendedStack{}
+	ctx.callIndexStack.Push(ctx.activeCallIndex)
 }
 
 func (ctx *Context) InitVersion(nodeVersion, dmVersion, variant string) {
@@ -117,7 +133,7 @@ func (ctx *Context) RecordGenesisBlock(block *types.Block, recordGenesisAlloc fu
 		return
 	}
 
-	if ctx.inBlock.Load() == true {
+	if ctx.inBlock.Load() {
 		panic("trying to record genesis block while in block context")
 	}
 
@@ -139,7 +155,7 @@ func (ctx *Context) StartBlock(block *types.Block) {
 	}
 
 	ctx.seenBlock.Store(true)
-	ctx.totalOrderingCounter.Store(0)
+
 	ctx.printer.Print("BEGIN_BLOCK", Uint64(block.NumberU64()))
 }
 
@@ -149,19 +165,7 @@ func (ctx *Context) FinalizeBlock(block *types.Block) {
 	ctx.printer.Print("FINALIZE_BLOCK", Uint64(block.NumberU64()))
 }
 
-// exitBlock is used when an abnormal condition is encountered while processing
-// transactions and we must end the block processing right away, resetting the start
-// along the way.
-func (ctx *Context) exitBlock() {
-	if !ctx.inBlock.CAS(true, false) {
-		panic("exiting a block while not already within a block scope")
-	}
-	ctx.blockLogIndex = 0
-}
-
 func (ctx *Context) EndBlock(block *types.Block, totalDifficulty *big.Int) {
-	ctx.exitBlock()
-
 	ctx.printer.Print("END_BLOCK",
 		Uint64(block.NumberU64()),
 		Uint64(uint64(block.Size())),
@@ -171,6 +175,22 @@ func (ctx *Context) EndBlock(block *types.Block, totalDifficulty *big.Int) {
 			"totalDifficulty": (*hexutil.Big)(totalDifficulty),
 		}),
 	)
+
+	ctx.exitBlock()
+}
+
+// exitBlock is used when an abnormal condition is encountered while processing
+// transactions and we must end the block processing right away, resetting the start
+// along the way.
+func (ctx *Context) exitBlock() {
+	if !ctx.inBlock.Load() {
+		panic("exiting a block while not already within a block scope")
+	}
+
+	ctx.resetBlock()
+
+	// We must reset transcation because exit block can be called while a transaction is inflight
+	ctx.resetTransaction()
 }
 
 // CancelBlock emit a Firehose CANCEL_BLOCK event that tells the console reader to discard any
@@ -283,7 +303,9 @@ func (ctx *Context) StartTransactionRaw(
 		return
 	}
 
-	ctx.openTransaction()
+	if !ctx.inTransaction.CAS(false, true) {
+		panic("entering a transaction while already in a transaction scope")
+	}
 
 	// We start assuming the "null" value (i.e. a dot character), and update if `to` is set
 	toAsString := "."
@@ -315,12 +337,6 @@ func (ctx *Context) StartTransactionRaw(
 	)
 }
 
-func (ctx *Context) openTransaction() {
-	if !ctx.inTransaction.CAS(false, true) {
-		panic("entering a transaction while already in a transaction scope")
-	}
-}
-
 func (ctx *Context) RecordTrxFrom(from common.Address) {
 	if ctx == nil {
 		return
@@ -341,7 +357,7 @@ func (ctx *Context) EndTransaction(receipt *types.Receipt) {
 		return
 	}
 
-	if !ctx.inTransaction.CAS(true, false) {
+	if !ctx.inTransaction.Load() {
 		panic("exiting a transaction while not already within a transaction scope")
 	}
 
@@ -364,10 +380,7 @@ func (ctx *Context) EndTransaction(receipt *types.Receipt) {
 		JSON(logItems),
 	)
 
-	ctx.nextCallIndex = 0
-	ctx.activeCallIndex = "0"
-	ctx.callIndexStack = &ExtendedStack{}
-	ctx.callIndexStack.Push(ctx.activeCallIndex)
+	ctx.resetTransaction()
 }
 
 // Call methods
