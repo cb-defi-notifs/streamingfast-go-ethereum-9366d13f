@@ -52,7 +52,7 @@ jobs:
           tar -xvf ./aarch64-linux-musl-cross.tgz
           GIT_COMMIT=$(git rev-parse HEAD)
           GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
-          GOOS=linux GOARCH=arm64 go build -ldflags "-X main.gitCommit=$GIT_COMMIT -X main.gitDate=$GIT_COMMIT_DATE -extldflags=-static" -o ./build/bin/geth-linux-arm64 -a ./cmd/geth
+          CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.gitCommit=$GIT_COMMIT -X main.gitDate=$GIT_COMMIT_DATE -extldflags=-static" -o ./build/bin/geth-linux-arm64 -a ./cmd/geth
 
       - name: Upload Linux Build
         uses: actions/upload-artifact@v3
