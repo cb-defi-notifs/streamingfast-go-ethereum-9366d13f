@@ -900,6 +900,11 @@ var (
 		Usage: "Enable voting",
 	}
 
+	EnableMaliciousVoteMonitorFlag = cli.BoolFlag{
+		Name:  "monitor.maliciousvote",
+		Usage: "Enable malicious vote monitor to check whether any validator violates the voting rules of fast finality",
+	}
+
 	BLSPasswordFileFlag = cli.StringFlag{
 		Name:  "blspassword",
 		Usage: "File path for the BLS password, which contains the password to unlock BLS wallet for managing votes in fast_finality feature",
@@ -1158,11 +1163,13 @@ func setLes(ctx *cli.Context, cfg *ethconfig.Config) {
 	}
 }
 
-// setMonitor creates the monitor from the set
-// command line flags, returning empty if the monitor is disabled.
-func setMonitor(ctx *cli.Context, cfg *node.Config) {
+// setMonitors enable monitors from the command line flags.
+func setMonitors(ctx *cli.Context, cfg *node.Config) {
 	if ctx.GlobalBool(EnableDoubleSignMonitorFlag.Name) {
 		cfg.EnableDoubleSignMonitor = true
+	}
+	if ctx.GlobalBool(EnableMaliciousVoteMonitorFlag.Name) {
+		cfg.EnableMaliciousVoteMonitor = true
 	}
 }
 
@@ -1328,7 +1335,7 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	setNodeUserIdent(ctx, cfg)
 	setDataDir(ctx, cfg)
 	setSmartCard(ctx, cfg)
-	setMonitor(ctx, cfg)
+	setMonitors(ctx, cfg)
 	setBLSWalletDir(ctx, cfg)
 	setVoteJournalDir(ctx, cfg)
 
@@ -1408,7 +1415,7 @@ func setVoteJournalDir(ctx *cli.Context, cfg *node.Config) {
 	dataDir := cfg.DataDir
 	if ctx.GlobalIsSet(VoteJournalDirFlag.Name) {
 		cfg.VoteJournalDir = ctx.GlobalString(VoteJournalDirFlag.Name)
-	} else {
+	} else if cfg.VoteJournalDir == "" {
 		cfg.VoteJournalDir = filepath.Join(dataDir, "voteJournal")
 	}
 }
@@ -1417,7 +1424,7 @@ func setBLSWalletDir(ctx *cli.Context, cfg *node.Config) {
 	dataDir := cfg.DataDir
 	if ctx.GlobalIsSet(BLSWalletDirFlag.Name) {
 		cfg.BLSWalletDir = ctx.GlobalString(BLSWalletDirFlag.Name)
-	} else {
+	} else if cfg.BLSWalletDir == "" {
 		cfg.BLSWalletDir = filepath.Join(dataDir, "bls/wallet")
 	}
 }
