@@ -48,15 +48,21 @@ jobs:
           go mod download
           make geth
 
-      - name: Build Binary for ARM
-        if: matrix.os == 'ubuntu-20.04'
-        run: |
-          go mod download
-          wget https://musl.cc/aarch64-linux-musl-cross.tgz
-          tar -xvf ./aarch64-linux-musl-cross.tgz
-          GIT_COMMIT=$(git rev-parse HEAD)
-          GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
-          CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.gitCommit=$GIT_COMMIT -X main.gitDate=$GIT_COMMIT_DATE -extldflags=-static" -o ./build/bin/geth-linux-arm64 -a ./cmd/geth
+      # Unable to make it work, at least on ubuntu-20.04,
+      #
+      # Get a bunch of errors like:
+      #     runtime/cgo
+      #     gcc_arm64.S: Assembler messages:
+      #
+      # - name: Build Binary for ARM
+      #   if: matrix.os == 'ubuntu-20.04'
+      #   run: |
+      #     go mod download
+      #     wget https://musl.cc/aarch64-linux-musl-cross.tgz
+      #     tar -xvf ./aarch64-linux-musl-cross.tgz
+      #     GIT_COMMIT=$(git rev-parse HEAD)
+      #     GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
+      #     CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.gitCommit=$GIT_COMMIT -X main.gitDate=$GIT_COMMIT_DATE -extldflags=-static" -o ./build/bin/geth-linux-arm64 -a ./cmd/geth
 
       - name: Upload Linux Build
         uses: actions/upload-artifact@v3
@@ -79,12 +85,12 @@ jobs:
       #     name: windows
       #     path: ./build/bin/geth.exe
 
-      - name: Upload ARM-64 Build
-        uses: actions/upload-artifact@v3
-        if: matrix.os == 'ubuntu-20.04'
-        with:
-          name: arm64
-          path: ./build/bin/geth-linux-arm64
+      # - name: Upload ARM-64 Build
+      #   uses: actions/upload-artifact@v3
+      #   if: matrix.os == 'ubuntu-20.04'
+      #   with:
+      #     name: arm64
+      #     path: ./build/bin/geth-linux-arm64
 
   release:
     name: Release
@@ -115,11 +121,11 @@ jobs:
       #     name: windows
       #     path: ./windows
 
-      - name: Download Artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: arm64
-          path: ./arm64
+      # - name: Download Artifacts
+      #   uses: actions/download-artifact@v3
+      #   with:
+      #     name: arm64
+      #     path: ./arm64
 
       - name: Generate Change Log
         id: changelog
@@ -154,5 +160,5 @@ jobs:
           files: |
             ./linux/geth_linux
             ./macos/geth_macos
-            ./arm64/geth-linux-arm64
+          # ./arm64/geth-linux-arm64
           # ./windows/geth_windows.exe

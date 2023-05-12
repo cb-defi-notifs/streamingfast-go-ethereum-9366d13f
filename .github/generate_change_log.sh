@@ -22,7 +22,7 @@ done < ${change_log_file}
 LINUX_BIN_SUM="$(checksum ./linux/geth)"
 MAC_BIN_SUM="$(checksum ./macos/geth)"
 # WINDOWS_BIN_SUM="$(checksum ./windows/geth.exe)"
-ARM64_BIN_SUM="$(checksum ./arm64/geth-linux-arm64)"
+# ARM64_BIN_SUM="$(checksum ./arm64/geth-linux-arm64)"
 OUTPUT=$(cat <<-END
 ## Changelog
 ${CHANGE_LOG}
@@ -31,8 +31,8 @@ ${CHANGE_LOG}
 | :-----------: |------------|
 | geth_linux | ${LINUX_BIN_SUM} |
 | geth_mac  | ${MAC_BIN_SUM} |
-| geth_linux_arm64  | ${ARM64_BIN_SUM} |
 END
+#| geth_linux_arm64  | ${ARM64_BIN_SUM} |
 # | geth_windows  | ${WINDOWS_BIN_SUM} |
 )
 
