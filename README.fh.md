@@ -37,8 +37,8 @@ git fetch origin
 git fetch polygon
 git fetch bsc
 
-git checkout release/geth-1.11.x-fh2
-git checkout release/bsc-1.1.x-fh2
+git checkout release/geth-1.12.x-fh2
+git checkout release/bsc-1.2.x-fh2
 git checkout release/polygon-0.x-fh2
 ```
 
