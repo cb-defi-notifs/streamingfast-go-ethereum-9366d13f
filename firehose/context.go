@@ -73,12 +73,12 @@ type Context struct {
 	// Global state
 	seenBlock *atomic.Bool
 
-	// Block state
+	// Block state (don't forget to update resetBlock!)
 	inBlock              *atomic.Bool
 	blockLogIndex        uint64
 	totalOrderingCounter *atomic.Uint64
 
-	// Transaction state
+	// Transaction state (don't forget to update resetTransaction!)
 	inTransaction   *atomic.Bool
 	activeCallIndex string
 	nextCallIndex   uint64
@@ -141,7 +141,7 @@ func (ctx *Context) RecordGenesisBlock(block *types.Block, recordGenesisAlloc fu
 	root := block.Root()
 
 	ctx.StartBlock(block)
-	ctx.StartTransactionRaw(common.Hash{}, &zero, &big.Int{}, nil, nil, nil, 0, &big.Int{}, 0, nil, nil, nil, nil, 0)
+	ctx.StartTransactionRaw(common.Hash{}, &zero, &big.Int{}, nil, nil, nil, 0, &big.Int{}, 0, nil, nil, nil, nil, 0, 0, nil, nil)
 	ctx.RecordTrxFrom(zero)
 	recordGenesisAlloc(ctx)
 	ctx.EndTransaction(&types.Receipt{PostState: root[:]})
@@ -245,6 +245,9 @@ func (ctx *Context) StartTransaction(tx *types.Transaction, baseFee *big.Int) {
 		maxFeePerGas(tx),
 		maxPriorityFeePerGas(tx),
 		tx.Type(),
+		tx.BlobGas(),
+		tx.BlobGasFeeCap(),
+		tx.BlobHashes(),
 	)
 }
 
@@ -253,7 +256,7 @@ func maxFeePerGas(tx *types.Transaction) *big.Int {
 	case types.LegacyTxType, types.AccessListTxType:
 		return nil
 
-	case types.DynamicFeeTxType:
+	case types.DynamicFeeTxType, types.BlobTxType:
 		return tx.GasFeeCap()
 	}
 
@@ -265,7 +268,7 @@ func maxPriorityFeePerGas(tx *types.Transaction) *big.Int {
 	case types.LegacyTxType, types.AccessListTxType:
 		return nil
 
-	case types.DynamicFeeTxType:
+	case types.DynamicFeeTxType, types.BlobTxType:
 		return tx.GasTipCap()
 	}
 
@@ -277,7 +280,7 @@ func gasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 	case types.LegacyTxType, types.AccessListTxType:
 		return tx.GasPrice()
 
-	case types.DynamicFeeTxType:
+	case types.DynamicFeeTxType, types.BlobTxType:
 		if baseFee == nil {
 			return tx.GasPrice()
 		}
@@ -305,6 +308,11 @@ func (ctx *Context) StartTransactionRaw(
 	maxFeePerGas *big.Int,
 	maxPriorityFeePerGas *big.Int,
 	txType uint8,
+	// The data gas used is actually computed for the transaction and there is no execution,
+	// so it's known already at that point.
+	blobDataGasUsed uint64,
+	maxFeePerDataGas *big.Int,
+	blobHashes []common.Hash,
 ) {
 	if ctx == nil {
 		return
@@ -330,6 +338,24 @@ func (ctx *Context) StartTransactionRaw(
 		maxPriorityFeePerGasAsString = Hex(maxPriorityFeePerGas.Bytes())
 	}
 
+	maxFeePerDataGasAsString := "."
+	if maxFeePerDataGas != nil {
+		maxFeePerDataGasAsString = Hex(maxFeePerDataGas.Bytes())
+	}
+
+	blobHashesAsString := "."
+	if len(blobHashes) > 0 {
+		stringHashses := make([]string, len(blobHashes))
+		for i, blobHash := range blobHashes {
+			stringHashses[i] = Hash(blobHash)
+		}
+
+		blobHashesAsString = strings.Join(stringHashses, ",")
+	}
+
+	// Fork is not active yet, so let's not modify the instrumentation just yet
+	_, _, _ = blobDataGasUsed, maxFeePerDataGasAsString, blobHashesAsString
+
 	ctx.printer.Print("BEGIN_APPLY_TRX",
 		Hash(hash),
 		toAsString,
@@ -346,6 +372,10 @@ func (ctx *Context) StartTransactionRaw(
 		maxPriorityFeePerGasAsString,
 		Uint8(txType),
 		Uint64(ctx.totalOrderingCounter.Inc()),
+		// Blob fields will go here once activated
+		// Uint64(blobDataGasUsed),
+		// maxFeePerDataGasAsString,
+		// blobHashesAsString,
 	)
 }
 

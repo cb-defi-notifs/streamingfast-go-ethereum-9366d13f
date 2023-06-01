@@ -77,15 +77,18 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
 		misc.ApplyDAOHardFork(statedb, firehoseContext)
 	}
-	blockContext := NewEVMBlockContext(header, p.bc, nil)
-	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg, firehoseContext)
+	var (
+		context = NewEVMBlockContext(header, p.bc, nil)
+		vmenv   = vm.NewEVM(context, vm.TxContext{}, statedb, p.config, cfg, firehoseContext)
+		signer  = types.MakeSigner(p.config, header.Number, header.Time)
+	)
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
 		if firehoseContext.Enabled() {
 			firehoseContext.StartTransaction(tx, header.BaseFee)
 		}
 
-		msg, err := TransactionToMessage(tx, types.MakeSigner(p.config, header.Number), header.BaseFee)
+		msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 		if err != nil {
 			// Trapped later at 'Process' call site at which point the block is canceled
 			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
@@ -120,7 +123,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 	// Fail if Shanghai not enabled and len(withdrawals) is non-zero.
 	withdrawals := block.Withdrawals()
-	if len(withdrawals) > 0 && !p.config.IsShanghai(block.Time()) {
+	if len(withdrawals) > 0 && !p.config.IsShanghai(block.Number(), block.Time()) {
 		// Trapped later at 'Process' call site at which point the block is canceled
 		return nil, nil, 0, fmt.Errorf("withdrawals before shanghai")
 	}
@@ -181,7 +184,7 @@ func applyTransaction(msg *Message, config *params.ChainConfig, gp *GasPool, sta
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
 func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, firehoseContext *firehose.Context) (*types.Receipt, error) {
-	msg, err := TransactionToMessage(tx, types.MakeSigner(config, header.Number), header.BaseFee)
+	msg, err := TransactionToMessage(tx, types.MakeSigner(config, header.Number, header.Time), header.BaseFee)
 	if err != nil {
 		return nil, err
 	}
