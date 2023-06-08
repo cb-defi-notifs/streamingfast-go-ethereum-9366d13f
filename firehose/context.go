@@ -178,10 +178,15 @@ func (ctx *Context) EndBlock(block *types.Block, finalBlockHeader *types.Header,
 	// produced in memory.
 	//
 	// So if finalized header is the genesis block, skip emitting a finalized event to firehose
-	if finalBlockHeader != nil && finalBlockHeader.Number.Uint64() != 0 {
-		endData["finalizedBlockNum"] = (*hexutil.Big)(finalBlockHeader.Number)
-		endData["finalizedBlockHash"] = finalBlockHeader.Hash()
-	}
+
+	// For now, we disable emitting finalized block event to Firehose because the LIB can go
+	// backward, waiting details on https://github.com/bnb-chain/bsc/issues/1683 to decide a
+	// path forward.
+	_ = finalBlockHeader
+	// if finalBlockHeader != nil && finalBlockHeader.Number.Uint64() != 0 {
+	// 	endData["finalizedBlockNum"] = (*hexutil.Big)(finalBlockHeader.Number)
+	// 	endData["finalizedBlockHash"] = finalBlockHeader.Hash()
+	// }
 
 	ctx.printer.Print("END_BLOCK",
 		Uint64(block.NumberU64()),
