@@ -50,7 +50,7 @@ func (bc *BlockChain) CurrentFinalBlock() *types.Header {
 		if currentHeader == nil {
 			return nil
 		}
-		return p.GetFinalizedHeader(bc, currentHeader)
+		return p.GetFinalizedHeader(bc, currentHeader, false)
 	}
 
 	return nil

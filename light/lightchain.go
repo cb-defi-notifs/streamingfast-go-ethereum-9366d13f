@@ -460,7 +460,7 @@ func (lc *LightChain) InsertHeaderChain(chain []*types.Header, checkFreq int) (i
 		lc.chainFeed.Send(core.ChainEvent{Block: block, Hash: block.Hash()})
 		lc.chainHeadFeed.Send(core.ChainHeadEvent{Block: block})
 		if posa, ok := lc.Engine().(consensus.PoSA); ok {
-			lc.finalizedHeaderFeed.Send(core.FinalizedHeaderEvent{Header: posa.GetFinalizedHeader(lc, block.Header())})
+			lc.finalizedHeaderFeed.Send(core.FinalizedHeaderEvent{Header: posa.GetFinalizedHeader(lc, block.Header(), false)})
 		}
 	case core.SideStatTy:
 		lc.chainSideFeed.Send(core.ChainSideEvent{Block: block})

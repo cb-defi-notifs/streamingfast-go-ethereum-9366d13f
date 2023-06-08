@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -1735,7 +1736,25 @@ func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, he
 // GetFinalizedHeader returns highest finalized block header.
 // It will find vote finalized block within NaturallyFinalizedDist blocks firstly,
 // If the vote finalized block not found, return its naturally finalized block.
-func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
+func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header, viaFirehose bool) (out *types.Header) {
+	print := func(format string, args ...any) {
+		if viaFirehose {
+			fmt.Fprintf(os.Stderr, "BSC_Finality: "+format+"\n", args...)
+		}
+	}
+
+	if viaFirehose {
+		defer func() {
+			if out != nil {
+				print("returning #%d (%s)", out.Number.Uint64(), out.Hash())
+			} else {
+				print("returning <nil>")
+			}
+		}()
+	}
+
+	print("starting #%d (%s)", header.Number.Uint64(), header.Hash())
+
 	backward := uint64(types.NaturallyFinalizedDist)
 	if chain == nil || header == nil {
 		return nil
@@ -1751,11 +1770,13 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 	if err != nil {
 		log.Error("Unexpected error when getting snapshot",
 			"error", err, "blockNumber", header.Number.Uint64(), "blockHash", header.Hash())
+		print("exiting via snapshot error %q", err.Error())
 		return nil
 	}
 
 	for snap.Attestation != nil && snap.Attestation.SourceNumber >= header.Number.Uint64()-backward {
 		if snap.Attestation.TargetNumber == snap.Attestation.SourceNumber+1 {
+			print("attestation target number (%d) == source+1 (%d + 1 = %d)", snap.Attestation.TargetNumber, snap.Attestation.SourceNumber, snap.Attestation.SourceNumber+1)
 			return chain.GetHeaderByHash(snap.Attestation.SourceHash)
 		}
 
@@ -1763,10 +1784,12 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 		if err != nil {
 			log.Error("Unexpected error when getting snapshot",
 				"error", err, "blockNumber", snap.Attestation.SourceNumber, "blockHash", snap.Attestation.SourceHash)
+			print("exiting via snapshot in for/loop get error %q", err.Error())
 			return nil
 		}
 	}
 
+	print("finding in ancient header")
 	return FindAncientHeader(header, backward, chain, nil)
 }
 

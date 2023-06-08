@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -575,6 +576,28 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 
 	}
 
+	go func() {
+		finalizedEvent := make(chan FinalizedHeaderEvent, 1000)
+		subscription := bc.SubscribeFinalizedHeaderEvent(finalizedEvent)
+		defer func() {
+			fmt.Fprintf(os.Stderr, "BSC_Finality: Subscription to blockchain finalized event terminated\n")
+			subscription.Unsubscribe()
+			close(finalizedEvent)
+		}()
+
+		fmt.Fprintf(os.Stderr, "BSC_Finality: Started subscription run loop\n")
+		for {
+			select {
+			case event := <-finalizedEvent:
+				fmt.Fprintf(os.Stderr, "BSC_Finality: Subscribed finalized event block #%d (%s)\n", event.Header.Number, event.Header.Hash().Hex())
+
+			case <-bc.quit:
+				fmt.Fprintf(os.Stderr, "BSC_Finality: Quitting subscription\n")
+				return
+			}
+		}
+	}()
+
 	return bc, nil
 }
 
@@ -666,7 +689,7 @@ func (bc *BlockChain) GetJustifiedNumber(header *types.Header) uint64 {
 // getFinalizedNumber returns the highest finalized number before the specific block.
 func (bc *BlockChain) getFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
-		if finalizedHeader := p.GetFinalizedHeader(bc, header); finalizedHeader != nil {
+		if finalizedHeader := p.GetFinalizedHeader(bc, header, false); finalizedHeader != nil {
 			return finalizedHeader.Number.Uint64()
 		}
 	}
@@ -675,9 +698,9 @@ func (bc *BlockChain) getFinalizedNumber(header *types.Header) uint64 {
 }
 
 // getFinalizedHeader returns the highest finalized header before the specific block.
-func (bc *BlockChain) getFinalizedHeader(header *types.Header) *types.Header {
+func (bc *BlockChain) getFinalizedHeader(header *types.Header, viaFirehose bool) *types.Header {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
-		return p.GetFinalizedHeader(bc, header)
+		return p.GetFinalizedHeader(bc, header, viaFirehose)
 	}
 
 	return nil
@@ -1744,7 +1767,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		if emitHeadEvent {
 			bc.chainHeadFeed.Send(ChainHeadEvent{Block: block})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
-				if finalizedHeader := posa.GetFinalizedHeader(bc, block.Header()); finalizedHeader != nil {
+				if finalizedHeader := posa.GetFinalizedHeader(bc, block.Header(), false); finalizedHeader != nil {
 					bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
 				}
 			}
@@ -1836,7 +1859,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		if lastCanon != nil && bc.CurrentBlock().Hash() == lastCanon.Hash() {
 			bc.chainHeadFeed.Send(ChainHeadEvent{lastCanon})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
-				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header()); finalizedHeader != nil {
+				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header(), false); finalizedHeader != nil {
 					bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
 				}
 			}
@@ -1994,7 +2017,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 				firehoseContext.FinalizeBlock(block)
 				ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 				td := new(big.Int).Add(block.Difficulty(), ptd)
-				firehoseContext.EndBlock(block, bc.getFinalizedHeader(block.Header()), td)
+				firehoseContext.EndBlock(block, bc.getFinalizedHeader(block.Header(), true), td)
 			}
 
 			stats.processed++
@@ -2078,7 +2101,19 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			// Calculate the total difficulty of the block
 			ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 			td := new(big.Int).Add(block.Difficulty(), ptd)
-			firehoseContext.EndBlock(block, bc.getFinalizedHeader(block.Header()), td)
+
+			finalizedBlock := bc.getFinalizedHeader(block.Header(), true)
+
+			var headFinalizedBlock *types.Header
+			currentHeader := bc.CurrentHeader()
+			if currentHeader != nil {
+				headFinalizedBlock = bc.getFinalizedHeader(currentHeader, false)
+			}
+
+			firehoseContext.EndBlock(block, finalizedBlock, td)
+
+			fmt.Fprintf(os.Stderr, "BSC_Finality: Ingested block %q LIB is %q\n", (*header)(block.Header()), (*header)(finalizedBlock))
+			fmt.Fprintf(os.Stderr, "BSC_Finality: Head block %q LIB is %q\n", (*header)(currentHeader), (*header)(headFinalizedBlock))
 		}
 
 		bc.cacheReceipts(block.Hash(), receipts)
@@ -2168,6 +2203,17 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 	stats.ignored += it.remaining()
 
 	return it.index, err
+}
+
+type header types.Header
+
+func (h *header) String() string {
+	if h == nil {
+		return "<Not found>"
+	} else {
+		header := (*types.Header)(h)
+		return fmt.Sprintf("#%d (%s)", header.Number, header.Hash())
+	}
 }
 
 func (bc *BlockChain) updateHighestVerifiedHeader(header *types.Header) {
