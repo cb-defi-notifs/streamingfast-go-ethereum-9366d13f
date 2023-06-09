@@ -208,7 +208,6 @@ type Config struct {
 
 	// Maximum number of messages in a batch
 	RPCBatchLimit uint64 `toml:",omitempty"`
-
 	// Configs for RPC execution pool
 	WSJsonRPCExecutionPoolSize             uint64        `toml:",omitempty"`
 	WSJsonRPCExecutionPoolRequestTimeout   time.Duration `toml:",omitempty"`

@@ -17,6 +17,7 @@
 package tracers
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
@@ -67,7 +68,7 @@ func BenchmarkTransactionTrace(b *testing.B) {
 		Origin:   from,
 		GasPrice: tx.GasPrice(),
 	}
-	context := vm.BlockContext{
+	blockContext := vm.BlockContext{
 		CanTransfer: core.CanTransfer,
 		Transfer:    core.Transfer,
 		Coinbase:    common.Address{},
@@ -103,7 +104,7 @@ func BenchmarkTransactionTrace(b *testing.B) {
 		//EnableMemory: false,
 		//EnableReturnData: false,
 	})
-	evm := vm.NewEVM(context, txContext, statedb, params.AllEthashProtocolChanges, vm.Config{Debug: true, Tracer: tracer}, firehose.NoOpContext)
+	evm := vm.NewEVM(blockContext, txContext, statedb, params.AllEthashProtocolChanges, vm.Config{Debug: true, Tracer: tracer}, firehose.NoOpContext)
 	msg, err := tx.AsMessage(signer, nil)
 	if err != nil {
 		b.Fatalf("failed to prepare transaction for tracing: %v", err)
@@ -114,7 +115,7 @@ func BenchmarkTransactionTrace(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		snap := statedb.Snapshot()
 		st := core.NewStateTransition(evm, msg, new(core.GasPool).AddGas(tx.Gas()))
-		_, err = st.TransitionDb()
+		_, err = st.TransitionDb(context.Background())
 		if err != nil {
 			b.Fatal(err)
 		}

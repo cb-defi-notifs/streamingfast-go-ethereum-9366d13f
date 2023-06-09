@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"context"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -173,7 +174,7 @@ func (evm *EVM) Interpreter() *EVMInterpreter {
 // parameters. It also handles any necessary value transfer required and takes
 // the necessary steps to create accounts and reverses the state in case of an
 // execution error or failed value transfer.
-func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *big.Int) (ret []byte, leftOverGas uint64, err error) {
+func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *big.Int, interruptCtx context.Context) (ret []byte, leftOverGas uint64, err error) {
 	if evm.firehoseContext.Enabled() {
 		evm.firehoseContext.StartCall("CALL")
 		evm.firehoseContext.RecordCallParams("CALL", caller.Address(), addr, value, gas, input)
@@ -255,7 +256,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			// The depth-check is already done, and precompiles handled above
 			contract := NewContract(caller, AccountRef(addrCopy), value, gas, evm.firehoseContext)
 			contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), code)
-			ret, err = evm.interpreter.Run(contract, input, false)
+			ret, err = evm.interpreter.PreRun(contract, input, false, interruptCtx)
 			gas = contract.Gas
 		}
 	}
@@ -343,7 +344,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 		// The contract is a scoped environment for this execution context only.
 		contract := NewContract(caller, AccountRef(caller.Address()), value, gas, evm.firehoseContext)
 		contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
-		ret, err = evm.interpreter.Run(contract, input, false)
+		ret, err = evm.interpreter.PreRun(contract, input, false, nil)
 		gas = contract.Gas
 	}
 	if err != nil {
@@ -426,7 +427,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 		// Initialise a new contract and make initialise the delegate values
 		contract := NewContract(caller, AccountRef(caller.Address()), nil, gas, evm.firehoseContext).AsDelegate()
 		contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
-		ret, err = evm.interpreter.Run(contract, input, false)
+		ret, err = evm.interpreter.PreRun(contract, input, false, nil)
 		gas = contract.Gas
 	}
 	if err != nil {
@@ -510,7 +511,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		// When an error was returned by the EVM or when setting the creation code
 		// above we revert to the snapshot and consume any gas remaining. Additionally
 		// when we're in Homestead this also counts for code storage gas errors.
-		ret, err = evm.interpreter.Run(contract, input, true)
+		ret, err = evm.interpreter.PreRun(contract, input, true, nil)
 		gas = contract.Gas
 	}
 	if err != nil {
@@ -622,7 +623,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 
 	start := time.Now()
 
-	ret, err := evm.interpreter.Run(contract, nil, false)
+	ret, err := evm.interpreter.PreRun(contract, nil, false, nil)
 
 	// Check whether the max code size has been exceeded, assign err if the case.
 	if err == nil && evm.chainRules.IsEIP158 && len(ret) > params.MaxCodeSize {

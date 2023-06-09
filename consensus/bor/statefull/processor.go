@@ -118,6 +118,7 @@ func ApplyMessage(
 		msg.Data(),
 		msg.Gas(),
 		msg.Value(),
+		nil,
 	)
 	// Update the state with pending changes
 	if err != nil {
@@ -160,6 +161,7 @@ func ApplyBorMessage(vmenv vm.EVM, msg Callmsg) (*core.ExecutionResult, error) {
 		msg.Data(),
 		msg.Gas(),
 		msg.Value(),
+		nil,
 	)
 	// Update the state with pending changes
 	if err != nil {

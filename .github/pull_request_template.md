@@ -8,16 +8,23 @@ Please provide a detailed description of what was done in this PR
 - [ ] Hotfix (change that solves an urgent issue, and requires immediate attention)
 - [ ] New feature (non-breaking change that adds functionality)
 - [ ] Breaking change (change that is not backwards-compatible and/or changes current functionality)
+- [ ] Changes only for a subset of nodes
 
 # Breaking changes
 
 Please complete this section if any breaking changes have been made, otherwise delete it
+
+# Nodes audience
+
+In case this PR includes changes that must be applied only to a subset of nodes, please specify how you handled it (e.g. by adding a flag with a default value...)
 
 # Checklist
 
 - [ ] I have added at least 2 reviewer or the whole pos-v1 team
 - [ ] I have added sufficient documentation in code
 - [ ] I will be resolving comments - if any - by pushing each fix in a separate commit and linking the commit hash in the comment reply
+- [ ] Created a task in Jira and informed the team for implementation in Erigon client (if applicable)
+- [ ] Includes RPC methods changes, and the Notion documentation has been updated
 
 # Cross repository changes
 
