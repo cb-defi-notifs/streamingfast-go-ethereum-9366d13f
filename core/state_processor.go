@@ -105,7 +105,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 
 		statedb.Prepare(tx.Hash(), i)
-		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, interruptCtx)
+		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, interruptCtx, firehoseContext)
 		if err != nil {
 			// Trapped later at 'Process' call site at which point the block is canceled
 			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
@@ -135,7 +135,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 }
 
 // nolint : unparam
-func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, interruptCtx context.Context) (*types.Receipt, error) {
+func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, interruptCtx context.Context, firehoseContext *firehose.Context) (*types.Receipt, error) {
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
@@ -163,10 +163,10 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	statedb.SetMVHashmap(nil)
 
 	if evm.ChainConfig().IsLondon(blockNumber) {
-		statedb.AddBalance(result.BurntContractAddress, result.FeeBurnt)
+		statedb.AddBalance(result.BurntContractAddress, result.FeeBurnt, false, firehoseContext, firehose.BalanceChangeReason("burn"))
 	}
 
-	statedb.AddBalance(evm.Context.Coinbase, result.FeeTipped)
+	statedb.AddBalance(evm.Context.Coinbase, result.FeeTipped, false, firehoseContext, firehose.BalanceChangeReason("reward_transaction_fee"))
 	output1 := new(big.Int).SetBytes(result.SenderInitBalance.Bytes())
 	output2 := new(big.Int).SetBytes(coinbaseBalance.Bytes())
 
@@ -183,6 +183,8 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 		coinbaseBalance,
 		output1.Sub(output1, result.FeeTipped),
 		output2.Add(output2, result.FeeTipped),
+
+		firehoseContext,
 	)
 
 	if result.Err == vm.ErrInterrupt {
@@ -236,5 +238,5 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 	blockContext := NewEVMBlockContext(header, bc, author)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, config, cfg, firehoseContext)
 
-	return applyTransaction(msg, config, bc, author, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv, interruptCtx)
+	return applyTransaction(msg, config, bc, author, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv, interruptCtx, firehoseContext)
 }

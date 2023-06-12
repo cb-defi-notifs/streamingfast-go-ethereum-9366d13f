@@ -519,9 +519,9 @@ func TestMVHashMapReadWriteDelete(t *testing.T) {
 	assert.Equal(t, common.Hash{}, v)
 
 	// Tx1 write
-	states[1].GetOrNewStateObject(addr)
-	states[1].SetState(addr, key, val)
-	states[1].SetBalance(addr, balance)
+	states[1].GetOrNewStateObject(addr, false, firehose.NoOpContext)
+	states[1].SetState(addr, key, val, firehose.NoOpContext)
+	states[1].SetBalance(addr, balance, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
 	states[1].FlushMVWriteSet()
 
 	// Tx1 read
@@ -539,7 +539,7 @@ func TestMVHashMapReadWriteDelete(t *testing.T) {
 	assert.Equal(t, balance, b)
 
 	// Tx3 delete
-	states[3].Suicide(addr)
+	states[3].Suicide(addr, firehose.NoOpContext)
 
 	// Within Tx 3, the state should not change before finalize
 	v = states[3].GetState(addr, key)
@@ -581,21 +581,21 @@ func TestMVHashMapRevert(t *testing.T) {
 	balance := new(big.Int).SetUint64(uint64(100))
 
 	// Tx0 write
-	states[0].GetOrNewStateObject(addr)
-	states[0].SetState(addr, key, val)
-	states[0].SetBalance(addr, balance)
+	states[0].GetOrNewStateObject(addr, false, firehose.NoOpContext)
+	states[0].SetState(addr, key, val, firehose.NoOpContext)
+	states[0].SetBalance(addr, balance, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
 	states[0].FlushMVWriteSet()
 
 	// Tx1 perform some ops and then revert
 	snapshot := states[1].Snapshot()
-	states[1].AddBalance(addr, new(big.Int).SetUint64(uint64(100)))
-	states[1].SetState(addr, key, common.HexToHash("0x02"))
+	states[1].AddBalance(addr, new(big.Int).SetUint64(uint64(100)), false, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
+	states[1].SetState(addr, key, common.HexToHash("0x02"), firehose.NoOpContext)
 	v := states[1].GetState(addr, key)
 	b := states[1].GetBalance(addr)
 	assert.Equal(t, new(big.Int).SetUint64(uint64(200)), b)
 	assert.Equal(t, common.HexToHash("0x02"), v)
 
-	states[1].Suicide(addr)
+	states[1].Suicide(addr, firehose.NoOpContext)
 
 	states[1].RevertToSnapshot(snapshot)
 
@@ -641,15 +641,15 @@ func TestMVHashMapMarkEstimate(t *testing.T) {
 	assert.Equal(t, common.Hash{}, v)
 
 	// Tx0 write
-	states[0].SetState(addr, key, val)
+	states[0].SetState(addr, key, val, firehose.NoOpContext)
 	v = states[0].GetState(addr, key)
 	assert.Equal(t, val, v)
 	states[0].FlushMVWriteSet()
 
 	// Tx1 write
-	states[1].GetOrNewStateObject(addr)
-	states[1].SetState(addr, key, val)
-	states[1].SetBalance(addr, balance)
+	states[1].GetOrNewStateObject(addr, false, firehose.NoOpContext)
+	states[1].SetState(addr, key, val, firehose.NoOpContext)
+	states[1].SetBalance(addr, balance, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
 	states[1].FlushMVWriteSet()
 
 	// Tx2 read
@@ -705,14 +705,14 @@ func TestMVHashMapOverwrite(t *testing.T) {
 	balance2 := new(big.Int).SetUint64(uint64(200))
 
 	// Tx0 write
-	states[0].GetOrNewStateObject(addr)
-	states[0].SetState(addr, key, val1)
-	states[0].SetBalance(addr, balance1)
+	states[0].GetOrNewStateObject(addr, false, firehose.NoOpContext)
+	states[0].SetState(addr, key, val1, firehose.NoOpContext)
+	states[0].SetBalance(addr, balance1, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
 	states[0].FlushMVWriteSet()
 
 	// Tx1 write
-	states[1].SetState(addr, key, val2)
-	states[1].SetBalance(addr, balance2)
+	states[1].SetState(addr, key, val2, firehose.NoOpContext)
+	states[1].SetBalance(addr, balance2, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
 	v := states[1].GetState(addr, key)
 	b := states[1].GetBalance(addr)
 	states[1].FlushMVWriteSet()
@@ -787,17 +787,17 @@ func TestMVHashMapWriteNoConflict(t *testing.T) {
 	val2 := common.HexToHash("0x02")
 
 	// Tx0 write
-	states[0].GetOrNewStateObject(addr)
+	states[0].GetOrNewStateObject(addr, false, firehose.NoOpContext)
 	states[0].FlushMVWriteSet()
 
 	// Tx2 write
-	states[2].SetState(addr, key2, val2)
+	states[2].SetState(addr, key2, val2, firehose.NoOpContext)
 	states[2].FlushMVWriteSet()
 
 	// Tx1 write
 	tx1Snapshot := states[1].Snapshot()
-	states[1].SetState(addr, key1, val1)
-	states[1].SetBalance(addr, balance1)
+	states[1].SetState(addr, key1, val1, firehose.NoOpContext)
+	states[1].SetBalance(addr, balance1, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
 	states[1].FlushMVWriteSet()
 
 	// Tx1 read
@@ -881,62 +881,62 @@ func TestApplyMVWriteSet(t *testing.T) {
 	code := []byte{1, 2, 3}
 
 	// Tx0 write
-	states[0].GetOrNewStateObject(addr1)
-	states[0].SetState(addr1, key1, val1)
-	states[0].SetBalance(addr1, balance1)
-	states[0].SetState(addr2, key2, val2)
-	states[0].GetOrNewStateObject(addr3)
+	states[0].GetOrNewStateObject(addr1, false, firehose.NoOpContext)
+	states[0].SetState(addr1, key1, val1, firehose.NoOpContext)
+	states[0].SetBalance(addr1, balance1, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
+	states[0].SetState(addr2, key2, val2, firehose.NoOpContext)
+	states[0].GetOrNewStateObject(addr3, false, firehose.NoOpContext)
 	states[0].Finalise(true)
 	states[0].FlushMVWriteSet()
 
-	sSingleProcess.GetOrNewStateObject(addr1)
-	sSingleProcess.SetState(addr1, key1, val1)
-	sSingleProcess.SetBalance(addr1, balance1)
-	sSingleProcess.SetState(addr2, key2, val2)
-	sSingleProcess.GetOrNewStateObject(addr3)
+	sSingleProcess.GetOrNewStateObject(addr1, false, firehose.NoOpContext)
+	sSingleProcess.SetState(addr1, key1, val1, firehose.NoOpContext)
+	sSingleProcess.SetBalance(addr1, balance1, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
+	sSingleProcess.SetState(addr2, key2, val2, firehose.NoOpContext)
+	sSingleProcess.GetOrNewStateObject(addr3, false, firehose.NoOpContext)
 
 	sClean.ApplyMVWriteSet(states[0].MVWriteList())
 
 	assert.Equal(t, sSingleProcess.IntermediateRoot(true), sClean.IntermediateRoot(true))
 
 	// Tx1 write
-	states[1].SetState(addr1, key2, val2)
-	states[1].SetBalance(addr1, balance2)
-	states[1].SetNonce(addr1, 1)
+	states[1].SetState(addr1, key2, val2, firehose.NoOpContext)
+	states[1].SetBalance(addr1, balance2, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
+	states[1].SetNonce(addr1, 1, firehose.NoOpContext)
 	states[1].Finalise(true)
 	states[1].FlushMVWriteSet()
 
-	sSingleProcess.SetState(addr1, key2, val2)
-	sSingleProcess.SetBalance(addr1, balance2)
-	sSingleProcess.SetNonce(addr1, 1)
+	sSingleProcess.SetState(addr1, key2, val2, firehose.NoOpContext)
+	sSingleProcess.SetBalance(addr1, balance2, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
+	sSingleProcess.SetNonce(addr1, 1, firehose.NoOpContext)
 
 	sClean.ApplyMVWriteSet(states[1].MVWriteList())
 
 	assert.Equal(t, sSingleProcess.IntermediateRoot(true), sClean.IntermediateRoot(true))
 
 	// Tx2 write
-	states[2].SetState(addr1, key1, val2)
-	states[2].SetBalance(addr1, balance2)
-	states[2].SetNonce(addr1, 2)
+	states[2].SetState(addr1, key1, val2, firehose.NoOpContext)
+	states[2].SetBalance(addr1, balance2, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
+	states[2].SetNonce(addr1, 2, firehose.NoOpContext)
 	states[2].Finalise(true)
 	states[2].FlushMVWriteSet()
 
-	sSingleProcess.SetState(addr1, key1, val2)
-	sSingleProcess.SetBalance(addr1, balance2)
-	sSingleProcess.SetNonce(addr1, 2)
+	sSingleProcess.SetState(addr1, key1, val2, firehose.NoOpContext)
+	sSingleProcess.SetBalance(addr1, balance2, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
+	sSingleProcess.SetNonce(addr1, 2, firehose.NoOpContext)
 
 	sClean.ApplyMVWriteSet(states[2].MVWriteList())
 
 	assert.Equal(t, sSingleProcess.IntermediateRoot(true), sClean.IntermediateRoot(true))
 
 	// Tx3 write
-	states[3].Suicide(addr2)
-	states[3].SetCode(addr1, code)
+	states[3].Suicide(addr2, firehose.NoOpContext)
+	states[3].SetCode(addr1, code, firehose.NoOpContext)
 	states[3].Finalise(true)
 	states[3].FlushMVWriteSet()
 
-	sSingleProcess.Suicide(addr2)
-	sSingleProcess.SetCode(addr1, code)
+	sSingleProcess.Suicide(addr2, firehose.NoOpContext)
+	sSingleProcess.SetCode(addr1, code, firehose.NoOpContext)
 
 	sClean.ApplyMVWriteSet(states[3].MVWriteList())
 

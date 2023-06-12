@@ -856,10 +856,10 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 			}
 
 			if london {
-				statedb.AddBalance(result.BurntContractAddress, result.FeeBurnt)
+				statedb.AddBalance(result.BurntContractAddress, result.FeeBurnt, false, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
 			}
 
-			statedb.AddBalance(blockCtx.Coinbase, result.FeeTipped)
+			statedb.AddBalance(blockCtx.Coinbase, result.FeeTipped, false, firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
 			output1 := new(big.Int).SetBytes(result.SenderInitBalance.Bytes())
 			output2 := new(big.Int).SetBytes(coinbaseBalance.Bytes())
 
@@ -876,6 +876,8 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 				coinbaseBalance,
 				output1.Sub(output1, result.FeeTipped),
 				output2.Add(output2, result.FeeTipped),
+
+				firehose.NoOpContext,
 			)
 
 			// Finalize the state so any modifications are written to the trie

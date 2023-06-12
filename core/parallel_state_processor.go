@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -30,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/firehose"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
@@ -86,9 +88,10 @@ type ExecutionTask struct {
 	// first 2 element in dependencies -> transaction index, and flag representing if delay is allowed or not
 	//                                       (0 -> delay is not allowed, 1 -> delay is allowed)
 	// next k elements in dependencies -> transaction indexes on which transaction i is dependent on
-	dependencies []int
-	coinbase     common.Address
-	blockContext vm.BlockContext
+	dependencies    []int
+	coinbase        common.Address
+	blockContext    vm.BlockContext
+	firehoseContext *firehose.Context
 }
 
 func (task *ExecutionTask) Execute(mvh *blockstm.MVHashMap, incarnation int) (err error) {
@@ -97,7 +100,7 @@ func (task *ExecutionTask) Execute(mvh *blockstm.MVHashMap, incarnation int) (er
 	task.statedb.SetMVHashmap(mvh)
 	task.statedb.SetIncarnation(incarnation)
 
-	evm := vm.NewEVM(task.blockContext, vm.TxContext{}, task.statedb, task.config, task.evmConfig)
+	evm := vm.NewEVM(task.blockContext, vm.TxContext{}, task.statedb, task.config, task.evmConfig, task.firehoseContext)
 
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(task.msg)
@@ -178,18 +181,24 @@ func (task *ExecutionTask) Settle() {
 
 	coinbaseBalance := task.finalStateDB.GetBalance(task.coinbase)
 
+	// FIXME: Firehose what about those logs, seems they already have been recorded, so we should ignore them?
+	// This is unclear, will need to solve this question before releasing.
+	//
+	// Inside ApplyMVWriteSet, we use firehose.NoOpContext everywhere
 	task.finalStateDB.ApplyMVWriteSet(task.statedb.MVFullWriteList())
 
 	for _, l := range task.statedb.GetLogs(task.tx.Hash(), task.blockHash) {
-		task.finalStateDB.AddLog(l)
+		// FIXME: Firehose what about those logs, seems they already have been recorded, so we should ignore them?
+		// This is unclear, will need to solve this question before releasing.
+		task.finalStateDB.AddLog(l, firehose.NoOpContext)
 	}
 
 	if *task.shouldDelayFeeCal {
 		if task.config.IsLondon(task.blockNumber) {
-			task.finalStateDB.AddBalance(task.result.BurntContractAddress, task.result.FeeBurnt)
+			task.finalStateDB.AddBalance(task.result.BurntContractAddress, task.result.FeeBurnt, false, task.firehoseContext, firehose.BalanceChangeReason("burn"))
 		}
 
-		task.finalStateDB.AddBalance(task.coinbase, task.result.FeeTipped)
+		task.finalStateDB.AddBalance(task.coinbase, task.result.FeeTipped, false, task.firehoseContext, firehose.BalanceChangeReason("reward_transaction_fee"))
 		output1 := new(big.Int).SetBytes(task.result.SenderInitBalance.Bytes())
 		output2 := new(big.Int).SetBytes(coinbaseBalance.Bytes())
 
@@ -206,6 +215,8 @@ func (task *ExecutionTask) Settle() {
 			coinbaseBalance,
 			output1.Sub(output1, task.result.FeeTipped),
 			output2.Add(output2, task.result.FeeTipped),
+
+			task.firehoseContext,
 		)
 	}
 
@@ -266,18 +277,23 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	blockstm.SetProcs(cfg.ParallelSpeculativeProcesses)
 
 	var (
-		receipts    types.Receipts
-		header      = block.Header()
-		blockHash   = block.Hash()
-		blockNumber = block.Number()
-		allLogs     []*types.Log
-		usedGas     = new(uint64)
-		metadata    bool
+		receipts        types.Receipts
+		header          = block.Header()
+		blockHash       = block.Hash()
+		blockNumber     = block.Number()
+		allLogs         []*types.Log
+		usedGas         = new(uint64)
+		metadata        bool
+		firehoseContext = firehose.MaybeSyncContext()
 	)
+
+	if firehoseContext.Enabled() {
+		firehoseContext.StartBlock(block)
+	}
 
 	// Mutate the block and state according to any hard-fork specs
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
-		misc.ApplyDAOHardFork(statedb)
+		misc.ApplyDAOHardFork(statedb, firehoseContext)
 	}
 
 	tasks := make([]blockstm.ExecTask, 0, len(block.Transactions()))
@@ -330,6 +346,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 				dependencies:      deps[i],
 				coinbase:          coinbase,
 				blockContext:      blockContext,
+				firehoseContext:   firehoseContext,
 			}
 
 			tasks = append(tasks, task)
@@ -355,6 +372,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 				dependencies:      nil,
 				coinbase:          coinbase,
 				blockContext:      blockContext,
+				firehoseContext:   firehoseContext,
 			}
 
 			tasks = append(tasks, task)
@@ -381,6 +399,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	for _, task := range tasks {
 		task := task.(*ExecutionTask)
 		if task.shouldRerunWithoutFeeDelay {
+			fmt.Fprintln(os.Stderr, "Might need to update battlefield to trigger this code path by reading the coinbase address within a contract")
 			shouldDelayFeeCal = false
 
 			statedb.StopPrefetcher()
@@ -409,7 +428,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles())
+	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), firehoseContext)
 
 	return receipts, allLogs, *usedGas, nil
 }

@@ -361,22 +361,22 @@ func (sw *StateDB) ApplyMVWriteSet(writes []blockstm.WriteDescriptor) {
 			addr := path.GetAddress()
 			stateKey := path.GetStateKey()
 			state := sr.GetState(addr, stateKey)
-			sw.SetState(addr, stateKey, state)
+			sw.SetState(addr, stateKey, state, firehose.NoOpContext)
 		} else if path.IsAddress() {
 			continue
 		} else {
 			addr := path.GetAddress()
 			switch path.GetSubpath() {
 			case BalancePath:
-				sw.SetBalance(addr, sr.GetBalance(addr))
+				sw.SetBalance(addr, sr.GetBalance(addr), firehose.NoOpContext, firehose.IgnoredBalanceChangeReason)
 			case NoncePath:
-				sw.SetNonce(addr, sr.GetNonce(addr))
+				sw.SetNonce(addr, sr.GetNonce(addr), firehose.NoOpContext)
 			case CodePath:
-				sw.SetCode(addr, sr.GetCode(addr))
+				sw.SetCode(addr, sr.GetCode(addr), firehose.NoOpContext)
 			case SuicidePath:
 				stateObject := sr.getDeletedStateObject(addr)
 				if stateObject != nil && stateObject.deleted {
-					sw.Suicide(addr)
+					sw.Suicide(addr, firehose.NoOpContext)
 				}
 			default:
 				panic(fmt.Errorf("unknown key type: %d", path.GetSubpath()))
