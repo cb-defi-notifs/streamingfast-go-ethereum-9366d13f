@@ -24,7 +24,7 @@ const (
 	VersionMajor = 0            // Major version component of the current release
 	VersionMinor = 4            // Minor version component of the current release
 	VersionPatch = 0            // Patch version component of the current release
-	VersionMeta  = "beta-4-fh2" // Version metadata to append to the version string
+	VersionMeta  = "beta-5-fh2" // Version metadata to append to the version string
 
 	FirehoseVersionMajor = 2
 	FirehoseVersionMinor = 2
