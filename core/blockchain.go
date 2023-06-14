@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -433,7 +434,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		// the genesis config computed matched Geth savec genesis block.
 		recomputedGenesisBlock := genesis.ToBlock(nil)
 		if bc.genesisBlock.Hash() != recomputedGenesisBlock.Hash() {
-			panic(fmt.Errorf("invalid Firehose genesis block and actual chain's stored genesis block, the actual genesis block's hash field extracted from Geth's database does not fit with hash of genesis block generated from Firehose determined genesis config, you might need to provide the correct 'genesis.json' file via --firehose-genesis-file"))
+			firehose.ReportHeaderComparisonResult(recomputedGenesisBlock.Header(), bc.genesisBlock.Header())
+			panic("firehose genesis block hash mismatch vs geth computed genesis block hash")
 		}
 
 		firehose.MaybeSyncContext().RecordGenesisBlock(bc.genesisBlock, func(ctx *firehose.Context) {
@@ -529,6 +531,8 @@ func (bc *BlockChain) ProcessBlock(block *types.Block, parent *types.Header) (ty
 	processorCount := 0
 
 	if bc.parallelProcessor != nil {
+		fmt.Fprintln(os.Stderr, "FIREHOSE parallel processor is used")
+
 		parallelStatedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return nil, nil, 0, nil, err
@@ -544,6 +548,8 @@ func (bc *BlockChain) ProcessBlock(block *types.Block, parent *types.Header) (ty
 	}
 
 	if bc.processor != nil {
+		fmt.Fprintln(os.Stderr, "FIREHOSE serial processor is used")
+
 		statedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return nil, nil, 0, nil, err
@@ -2741,9 +2747,15 @@ func (bc *BlockChain) reportBlock(block *types.Block, receipts types.Receipts, e
 
 	var receiptString string
 	for i, receipt := range receipts {
+		logsJson, err := json.Marshal(receipt.Logs)
+		if err != nil {
+			log.Error("Failed to marshal logs", "err", err)
+			return
+		}
+
 		receiptString += fmt.Sprintf("\t %d: cumulative: %v gas: %v contract: %v status: %v tx: %v logs: %v bloom: %x state: %x\n",
 			i, receipt.CumulativeGasUsed, receipt.GasUsed, receipt.ContractAddress.Hex(),
-			receipt.Status, receipt.TxHash.Hex(), receipt.Logs, receipt.Bloom, receipt.PostState)
+			receipt.Status, receipt.TxHash.Hex(), string(logsJson), receipt.Bloom, receipt.PostState)
 	}
 	log.Error(fmt.Sprintf(`
 ########## BAD BLOCK #########
