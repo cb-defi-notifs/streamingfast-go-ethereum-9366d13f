@@ -360,23 +360,21 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	output1 := new(big.Int).SetBytes(input1.Bytes())
 	output2 := new(big.Int).SetBytes(input2.Bytes())
 
-	if st.evm.ChainConfig().Bor != nil {
-		// Deprecating transfer log and will be removed in future fork. PLEASE DO NOT USE this transfer log going forward. Parameters won't get updated as expected going forward with EIP1559
-		// add transfer log
-		AddFeeTransferLog(
-			st.state,
+	// Deprecating transfer log and will be removed in future fork. PLEASE DO NOT USE this transfer log going forward. Parameters won't get updated as expected going forward with EIP1559
+	// add transfer log
+	AddFeeTransferLog(
+		st.state,
 
-			msg.From(),
-			st.evm.Context.Coinbase,
+		msg.From(),
+		st.evm.Context.Coinbase,
 
-			amount,
-			input1,
-			input2,
-			output1.Sub(output1, amount),
-			output2.Add(output2, amount),
-			st.firehoseContext,
-		)
-	}
+		amount,
+		input1,
+		input2,
+		output1.Sub(output1, amount),
+		output2.Add(output2, amount),
+		st.firehoseContext,
+	)
 
 	return &ExecutionResult{
 		UsedGas:    st.gasUsed(),
