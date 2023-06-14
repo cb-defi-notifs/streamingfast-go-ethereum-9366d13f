@@ -507,7 +507,11 @@ func NewParallelBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainCon
 		return nil, err
 	}
 
-	bc.parallelProcessor = NewParallelStateProcessor(chainConfig, bc, engine)
+	if firehose.Enabled {
+		log.Warn("Firehose switched parallel execution to be performed serially because Firehose don't support it today, support incoming")
+	} else {
+		bc.parallelProcessor = NewParallelStateProcessor(chainConfig, bc, engine)
+	}
 
 	return bc, nil
 }
@@ -531,8 +535,6 @@ func (bc *BlockChain) ProcessBlock(block *types.Block, parent *types.Header) (ty
 	processorCount := 0
 
 	if bc.parallelProcessor != nil {
-		fmt.Fprintln(os.Stderr, "FIREHOSE parallel processor is used")
-
 		parallelStatedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return nil, nil, 0, nil, err
@@ -548,8 +550,6 @@ func (bc *BlockChain) ProcessBlock(block *types.Block, parent *types.Header) (ty
 	}
 
 	if bc.processor != nil {
-		fmt.Fprintln(os.Stderr, "FIREHOSE serial processor is used")
-
 		statedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return nil, nil, 0, nil, err
