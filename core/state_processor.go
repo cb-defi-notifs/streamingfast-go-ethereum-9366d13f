@@ -80,10 +80,15 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 	blockContext := NewEVMBlockContext(header, p.bc, nil)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg, firehoseContext)
+	txFirehoseContext := firehoseContext
+	if txFirehoseContext.Enabled() {
+		txFirehoseContext = firehose.NewSpeculativeExecutionContext(5 * 1024 * 1024)
+	}
+
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
-		if firehoseContext.Enabled() {
-			firehoseContext.StartTransaction(tx, header.BaseFee)
+		if txFirehoseContext.Enabled() {
+			txFirehoseContext.StartTransaction(tx, uint(i), header.BaseFee)
 		}
 
 		if interruptCtx != nil {
@@ -100,19 +105,22 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 
-		if firehoseContext.Enabled() {
-			firehoseContext.RecordTrxFrom(msg.From())
+		if txFirehoseContext.Enabled() {
+			txFirehoseContext.RecordTrxFrom(msg.From())
 		}
 
 		statedb.Prepare(tx.Hash(), i)
-		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, interruptCtx, firehoseContext)
+		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv, interruptCtx, txFirehoseContext)
 		if err != nil {
 			// Trapped later at 'Process' call site at which point the block is canceled
 			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 
-		if firehoseContext.Enabled() {
-			firehoseContext.EndTransaction(receipt)
+		if txFirehoseContext.Enabled() {
+			txFirehoseContext.EndTransaction(receipt)
+
+			// We must flush using the "global" context here, since the speculative context don't hold the real global lock
+			firehoseContext.FlushTransaction(txFirehoseContext)
 		}
 
 		receipts = append(receipts, receipt)
@@ -139,6 +147,9 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
+
+	// We need to set it back because each transaction executes in the EVM with it's own context
+	evm.SetFirehoseContext(firehoseContext)
 
 	var result *ExecutionResult
 

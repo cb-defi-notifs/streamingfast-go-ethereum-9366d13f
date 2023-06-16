@@ -131,6 +131,10 @@ func (evm *EVM) FirehoseContext() *firehose.Context {
 	return evm.firehoseContext
 }
 
+func (evm *EVM) SetFirehoseContext(txFirehoseContext *firehose.Context) {
+	evm.firehoseContext = txFirehoseContext
+}
+
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
 // only ever be used *once*.
 func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig *params.ChainConfig, config Config, firehoseContext *firehose.Context) *EVM {

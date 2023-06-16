@@ -78,13 +78,16 @@ func ApplyMessage(
 	firehoseContext *firehose.Context,
 ) (uint64, error) {
 	var txHash common.Hash
-	if firehoseContext.Enabled() {
+	txFirehoseContext := firehoseContext
+	if txFirehoseContext.Enabled() {
+		txFirehoseContext = firehose.NewSpeculativeExecutionContext(1 * 1024 * 1024)
+
 		sha := sha3.NewLegacyKeccak256().(crypto.KeccakState)
 		sha.Reset()
 		rlp.Encode(sha, []interface{}{spanID, msg})
 		sha.Read(txHash[:])
 
-		firehoseContext.StartTransactionRaw(
+		txFirehoseContext.StartTransactionRaw(
 			txHash,
 			msg.To(),
 			msg.Value(),
@@ -98,8 +101,10 @@ func ApplyMessage(
 			nil,
 			nil,
 			types.LegacyTxType,
+			// FIREHOSE: Deal with the fact that global context for block is not available anymore here
+			txFirehoseContext.LastTransactionIndex()+1,
 		)
-		firehoseContext.RecordTrxFrom(msg.From())
+		txFirehoseContext.RecordTrxFrom(msg.From())
 	}
 
 	initialGas := msg.Gas()
@@ -109,7 +114,7 @@ func ApplyMessage(
 
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
-	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, state, chainConfig, vm.Config{}, firehoseContext)
+	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, state, chainConfig, vm.Config{}, txFirehoseContext)
 
 	// Apply the transaction to the current state (included in the env)
 	_, gasLeft, err := vmenv.Call(
@@ -127,9 +132,9 @@ func ApplyMessage(
 
 	gasUsed := initialGas - gasLeft
 
-	if firehoseContext.Enabled() {
+	if txFirehoseContext.Enabled() {
 		blockHash := header.Hash()
-		cumulativeGasUsed := firehoseContext.CumulativeGasUsed() + gasUsed
+		cumulativeGasUsed := txFirehoseContext.CumulativeGasUsed() + gasUsed
 
 		receipt := types.NewReceipt(nil, err != nil, cumulativeGasUsed)
 		receipt.TxHash = txHash
@@ -144,8 +149,10 @@ func ApplyMessage(
 		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 		receipt.BlockHash = blockHash
 		receipt.BlockNumber = header.Number
-		receipt.TransactionIndex = firehoseContext.LastTransactionIndex() + 1
-		firehoseContext.EndTransaction(receipt)
+		txFirehoseContext.EndTransaction(receipt)
+
+		// We must flush using the "global" context here, since the speculative context don't hold the real global lock
+		firehoseContext.FlushTransaction(txFirehoseContext)
 	}
 
 	return gasUsed, nil

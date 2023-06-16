@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -19,7 +20,6 @@ import (
 
 // NoOpContext can be used when no recording should happen for a given code path
 var NoOpContext *Context
-var CatalystContext *Context
 
 var syncContext *Context = NewContext(&DelegateToWriterPrinter{writer: os.Stdout})
 
@@ -72,7 +72,8 @@ type Context struct {
 	printer Printer
 
 	// Global state
-	seenBlock *atomic.Bool
+	seenBlock   *atomic.Bool
+	flushTxLock sync.Mutex
 
 	// Block state
 	inBlock                   *atomic.Bool
@@ -111,8 +112,8 @@ func (ctx *Context) InitVersion(nodeVersion, dmVersion, variant string) {
 	ctx.printer.Print("INIT", dmVersion, variant, nodeVersion)
 }
 
-func NewSpeculativeExecutionContext() *Context {
-	return NewContext(NewToBufferPrinter())
+func NewSpeculativeExecutionContext(initialAllocationInBytes int) *Context {
+	return NewContext(NewToBufferPrinter(initialAllocationInBytes))
 }
 
 func (ctx *Context) Enabled() bool {
@@ -146,7 +147,7 @@ func (ctx *Context) RecordGenesisBlock(block *types.Block, recordGenesisAlloc fu
 	root := block.Root()
 
 	ctx.StartBlock(block)
-	ctx.StartTransactionRaw(common.Hash{}, &zero, &big.Int{}, nil, nil, nil, 0, &big.Int{}, 0, nil, nil, nil, nil, 0)
+	ctx.StartTransactionRaw(common.Hash{}, &zero, &big.Int{}, nil, nil, nil, 0, &big.Int{}, 0, nil, nil, nil, nil, 0, 0)
 	ctx.RecordTrxFrom(zero)
 	recordGenesisAlloc(ctx)
 	ctx.EndTransaction(&types.Receipt{PostState: root[:]})
@@ -223,7 +224,7 @@ func (ctx *Context) CancelBlock(block *types.Block, err error) {
 
 // Transaction methods
 
-func (ctx *Context) StartTransaction(tx *types.Transaction, baseFee *big.Int) {
+func (ctx *Context) StartTransaction(tx *types.Transaction, txIndex uint, baseFee *big.Int) {
 	if ctx == nil {
 		return
 	}
@@ -246,6 +247,7 @@ func (ctx *Context) StartTransaction(tx *types.Transaction, baseFee *big.Int) {
 		maxFeePerGas(tx),
 		maxPriorityFeePerGas(tx),
 		tx.Type(),
+		txIndex,
 	)
 }
 
@@ -306,6 +308,7 @@ func (ctx *Context) StartTransactionRaw(
 	maxFeePerGas *big.Int,
 	maxPriorityFeePerGas *big.Int,
 	txType uint8,
+	txIndex uint,
 ) {
 	if ctx == nil {
 		return
@@ -342,6 +345,7 @@ func (ctx *Context) StartTransactionRaw(
 		maxPriorityFeePerGasAsString,
 		Uint8(txType),
 		Uint64(ctx.totalOrderingCounter.Inc()),
+		Uint(txIndex),
 	)
 }
 
@@ -358,6 +362,29 @@ func (ctx *Context) RecordTrxFrom(from common.Address) {
 	ctx.printer.Print("TRX_FROM",
 		Addr(from),
 	)
+}
+
+// FlushTransaction flushes the transaction context to the printer of the global context
+// so that the transaction it emitted through the global context printer.
+//
+// It also reset automatically the txContext for future re-use, if desired.
+func (ctx *Context) FlushTransaction(txContext *Context) {
+	if ctx == nil || txContext == nil {
+		return
+	}
+
+	if v, ok := txContext.printer.(*ToBufferPrinter); ok {
+		ctx.flushTxLock.Lock()
+		defer ctx.flushTxLock.Unlock()
+
+		fmt.Print(v.buffer.String())
+
+		v.Reset()
+	}
+
+	// Reset the transaction context for future re-use, if desired
+	txContext.resetTransaction()
+	txContext.resetBlock()
 }
 
 func (ctx *Context) EndTransaction(receipt *types.Receipt) {
@@ -392,6 +419,7 @@ func (ctx *Context) EndTransaction(receipt *types.Receipt) {
 }
 
 func (ctx *Context) CumulativeGasUsed() uint64 {
+	// FIREHOSE: Deal with the fact that global context for block is not available anymore here
 	return ctx.blockCumulativeGasUsed
 }
 
@@ -424,9 +452,9 @@ func (ctx *Context) openCall() string {
 }
 
 func (ctx *Context) callIndex() string {
-	if ctx.seenBlock.Load() && !ctx.inBlock.Load() {
+	if !ctx.inTransaction.Load() {
 		debug.PrintStack()
-		panic("should have been call in a block, something is deeply wrong")
+		panic("should have been call in a transaction, something is deeply wrong")
 	}
 
 	return ctx.activeCallIndex

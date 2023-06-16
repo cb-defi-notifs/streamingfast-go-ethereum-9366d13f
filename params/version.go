@@ -27,7 +27,7 @@ const (
 	VersionMeta  = "beta-5-fh2" // Version metadata to append to the version string
 
 	FirehoseVersionMajor = 2
-	FirehoseVersionMinor = 2
+	FirehoseVersionMinor = 3
 	Variant              = "polygon"
 )
 

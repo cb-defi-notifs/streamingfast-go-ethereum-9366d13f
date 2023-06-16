@@ -1066,6 +1066,7 @@ func doCallWithState(ctx context.Context, b Backend, args TransactionArgs, heade
 			nil,
 			nil,
 			0,
+			0,
 		)
 		firehoseContext.RecordTrxFrom(msg.From())
 	}
@@ -1207,7 +1208,7 @@ func (s *PublicBlockChainAPI) CallWithState(ctx context.Context, args Transactio
 // Execute the given contract's call using Firehose instrumentation return raw bytes containing the
 // string representation of the Firehose log output
 func (s *PublicBlockChainAPI) Execute(ctx context.Context, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride) (hexutil.Bytes, error) {
-	firehoseContext := firehose.NewSpeculativeExecutionContext()
+	firehoseContext := firehose.NewSpeculativeExecutionContext(100 * 1024)
 	result, err := DoCall(ctx, s.b, args, blockNrOrHash, nil, overrides, 5*time.Second, s.b.RPCGasCap(), firehoseContext)
 
 	// As soon as we have an execution result, we should have a complete Firehose log, so let's return it
