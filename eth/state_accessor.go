@@ -133,7 +133,7 @@ func (eth *Ethereum) StateAtBlock(block *types.Block, reexec uint64, base *state
 			return nil, fmt.Errorf("block #%d not found", next)
 		}
 
-		_, _, _, err := eth.blockchain.Processor().Process(current, statedb, vm.Config{}, nil)
+		_, _, _, err := eth.blockchain.Processor().Process(current, statedb, vm.Config{}, nil, firehose.NoOpContext)
 
 		if err != nil {
 			return nil, fmt.Errorf("processing block %d failed: %v", current.NumberU64(), err)

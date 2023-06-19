@@ -383,8 +383,20 @@ func (ctx *Context) FlushTransaction(txContext *Context) {
 	}
 
 	// Reset the transaction context for future re-use, if desired
-	txContext.resetTransaction()
-	txContext.resetBlock()
+	txContext.Reset()
+}
+
+// Reset resets the block/transaction context for future re-use, if desired. If does not
+// touch the global context for now.
+//
+// Should be used only on a transaction context, not on the global context.
+func (ctx *Context) Reset() {
+	if ctx == nil {
+		return
+	}
+
+	ctx.resetBlock()
+	ctx.resetTransaction()
 }
 
 func (ctx *Context) EndTransaction(receipt *types.Receipt) {

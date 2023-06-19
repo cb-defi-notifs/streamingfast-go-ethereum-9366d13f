@@ -44,7 +44,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/common/tracing"
 	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/core/blockstm"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -507,11 +506,7 @@ func NewParallelBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainCon
 		return nil, err
 	}
 
-	if firehose.Enabled {
-		log.Warn("Firehose switched parallel execution to be performed serially because Firehose don't support it today, support incoming")
-	} else {
-		bc.parallelProcessor = NewParallelStateProcessor(chainConfig, bc, engine)
-	}
+	bc.parallelProcessor = NewParallelStateProcessor(chainConfig, bc, engine)
 
 	return bc, nil
 }
@@ -521,6 +516,18 @@ func (bc *BlockChain) ProcessBlock(block *types.Block, parent *types.Header) (ty
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Firehose made modifications to logic performed here. Prior Firehose patch, the logic
+	// below was to start both processors and wait for both to finish. The first one to finish
+	// was the one that was used to save the new chain's state, the other one was simply discard.
+	//
+	// This cannot work with Firehose as Firehose needs to be able to record only one "execution"
+	// flow. So we changed the logic to start only the parallel processor and wait for it to finish.
+	// If there is an error with the parallel processor, we fallback to the normal processor.
+	//
+	// We removed the `resultChan` buffer and the `processorCount` variable as well as avoid to
+	// run the parallel processor in a goroutine since no concurrent state processor is required. We
+	// also added a field `executed` to the `Result` struct above to ensure we know if the parallel
+	// executed or not.
 	type Result struct {
 		receipts types.Receipts
 		logs     []*types.Log
@@ -528,64 +535,58 @@ func (bc *BlockChain) ProcessBlock(block *types.Block, parent *types.Header) (ty
 		err      error
 		statedb  *state.StateDB
 		counter  metrics.Counter
+		executed bool
 	}
 
-	resultChan := make(chan Result, 2)
-
-	processorCount := 0
-
+	var result Result
 	if bc.parallelProcessor != nil {
 		parallelStatedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return nil, nil, 0, nil, err
 		}
 
-		processorCount++
+		result.executed = true
+		result.statedb = parallelStatedb
+		result.counter = blockExecutionParallelCounter
 
-		go func() {
-			parallelStatedb.StartPrefetcher("chain")
-			receipts, logs, usedGas, err := bc.parallelProcessor.Process(block, parallelStatedb, bc.vmConfig, ctx)
-			resultChan <- Result{receipts, logs, usedGas, err, parallelStatedb, blockExecutionParallelCounter}
-		}()
+		parallelStatedb.StartPrefetcher("chain")
+		defer parallelStatedb.StopPrefetcher()
+
+		result.receipts, result.logs, result.usedGas, result.err = bc.parallelProcessor.Process(block, parallelStatedb, bc.vmConfig, ctx, firehose.MaybeSyncContext())
+		if result.err != nil {
+			log.Warn("Parallel state processor failed", "err", result.err)
+
+			if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() {
+				firehoseContext.CancelBlock(block, err)
+			}
+		}
 	}
 
-	if bc.processor != nil {
+	// Fallback to serial processor if parallel processor is disabled or parallel processor failed
+	if !result.executed || (result.executed && result.err != nil) {
+		if bc.processor == nil {
+			return nil, nil, 0, nil, fmt.Errorf("no serial processor set but is required (parallel is either disabled or it failed)")
+		}
+
 		statedb, err := state.New(parent.Root, bc.stateCache, bc.snaps)
 		if err != nil {
 			return nil, nil, 0, nil, err
 		}
 
-		processorCount++
+		statedb.StartPrefetcher("chain")
+		defer statedb.StopPrefetcher()
 
-		go func() {
-			statedb.StartPrefetcher("chain")
-			receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig, ctx)
-			resultChan <- Result{receipts, logs, usedGas, err, statedb, blockExecutionSerialCounter}
-		}()
-	}
+		result.executed = true
+		result.statedb = statedb
+		result.counter = blockExecutionParallelCounter
 
-	result := <-resultChan
-
-	if _, ok := result.err.(blockstm.ParallelExecFailedError); ok {
-		log.Warn("Parallel state processor failed", "err", result.err)
-
-		// If the parallel processor failed, we will fallback to the serial processor if enabled
-		if processorCount == 2 {
-			result.statedb.StopPrefetcher()
-			result = <-resultChan
-			processorCount--
+		result.receipts, result.logs, result.usedGas, result.err = bc.processor.Process(block, statedb, bc.vmConfig, ctx, firehose.MaybeSyncContext())
+		if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() && err != nil {
+			firehoseContext.CancelBlock(block, err)
 		}
 	}
 
 	result.counter.Inc(1)
-
-	// Make sure we are not leaking any prefetchers
-	if processorCount == 2 {
-		go func() {
-			second_result := <-resultChan
-			second_result.statedb.StopPrefetcher()
-		}()
-	}
 
 	return result.receipts, result.logs, result.usedGas, result.statedb, result.err
 }
@@ -1952,9 +1953,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
 			atomic.StoreUint32(&followupInterrupt, 1)
-			if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() {
-				firehoseContext.CancelBlock(block, err)
-			}
 			return it.index, err
 		}
 		// BOR state sync feed related changes

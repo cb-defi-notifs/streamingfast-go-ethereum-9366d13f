@@ -88,10 +88,10 @@ type ExecutionTask struct {
 	// first 2 element in dependencies -> transaction index, and flag representing if delay is allowed or not
 	//                                       (0 -> delay is not allowed, 1 -> delay is allowed)
 	// next k elements in dependencies -> transaction indexes on which transaction i is dependent on
-	dependencies    []int
-	coinbase        common.Address
-	blockContext    vm.BlockContext
-	firehoseContext *firehose.Context
+	dependencies      []int
+	coinbase          common.Address
+	blockContext      vm.BlockContext
+	txFirehoseContext *firehose.Context
 }
 
 func (task *ExecutionTask) Execute(mvh *blockstm.MVHashMap, incarnation int) (err error) {
@@ -100,11 +100,12 @@ func (task *ExecutionTask) Execute(mvh *blockstm.MVHashMap, incarnation int) (er
 	task.statedb.SetMVHashmap(mvh)
 	task.statedb.SetIncarnation(incarnation)
 
-	evm := vm.NewEVM(task.blockContext, vm.TxContext{}, task.statedb, task.config, task.evmConfig, task.firehoseContext)
+	evm := vm.NewEVM(task.blockContext, vm.TxContext{}, task.statedb, task.config, task.evmConfig, task.txFirehoseContext)
 
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(task.msg)
 	evm.Reset(txContext, task.statedb)
+	task.txFirehoseContext.Reset()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -116,6 +117,12 @@ func (task *ExecutionTask) Execute(mvh *blockstm.MVHashMap, incarnation int) (er
 			return
 		}
 	}()
+
+	if task.txFirehoseContext.Enabled() {
+		// End of transaction is performed only in Settle() since the receipt is not available here
+		task.txFirehoseContext.StartTransaction(task.tx, uint(task.index), task.header.BaseFee)
+		task.txFirehoseContext.RecordTrxFrom(task.msg.From())
+	}
 
 	// Apply the transaction to the current state (included in the env).
 	if *task.shouldDelayFeeCal {
@@ -195,10 +202,10 @@ func (task *ExecutionTask) Settle() {
 
 	if *task.shouldDelayFeeCal {
 		if task.config.IsLondon(task.blockNumber) {
-			task.finalStateDB.AddBalance(task.result.BurntContractAddress, task.result.FeeBurnt, false, task.firehoseContext, firehose.BalanceChangeReason("burn"))
+			task.finalStateDB.AddBalance(task.result.BurntContractAddress, task.result.FeeBurnt, false, task.txFirehoseContext, firehose.BalanceChangeReason("burn"))
 		}
 
-		task.finalStateDB.AddBalance(task.coinbase, task.result.FeeTipped, false, task.firehoseContext, firehose.BalanceChangeReason("reward_transaction_fee"))
+		task.finalStateDB.AddBalance(task.coinbase, task.result.FeeTipped, false, task.txFirehoseContext, firehose.BalanceChangeReason("reward_transaction_fee"))
 		output1 := new(big.Int).SetBytes(task.result.SenderInitBalance.Bytes())
 		output2 := new(big.Int).SetBytes(coinbaseBalance.Bytes())
 
@@ -216,7 +223,7 @@ func (task *ExecutionTask) Settle() {
 			output1.Sub(output1, task.result.FeeTipped),
 			output2.Add(output2, task.result.FeeTipped),
 
-			task.firehoseContext,
+			task.txFirehoseContext,
 		)
 	}
 
@@ -259,6 +266,11 @@ func (task *ExecutionTask) Settle() {
 	receipt.BlockNumber = task.blockNumber
 	receipt.TransactionIndex = uint(task.finalStateDB.TxIndex())
 
+	if task.txFirehoseContext.Enabled() {
+		task.txFirehoseContext.EndTransaction(receipt)
+		firehose.MaybeSyncContext().FlushTransaction(task.txFirehoseContext)
+	}
+
 	*task.receipts = append(*task.receipts, receipt)
 	*task.allLogs = append(*task.allLogs, receipt.Logs...)
 }
@@ -273,18 +285,21 @@ var parallelizabilityTimer = metrics.NewRegisteredTimer("block/parallelizability
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
 // nolint:gocognit
-func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config, interruptCtx context.Context) (types.Receipts, []*types.Log, uint64, error) {
+func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config, interruptCtx context.Context, firehoseContext *firehose.Context) (receipts types.Receipts, logs []*types.Log, gasUsed uint64, err error) {
+	finalizedSent := false
+	defer func() {
+		firehose.ReportToUser("Parallel execution terminated with finalized sent? %t, error? %s", finalizedSent, err)
+	}()
+
 	blockstm.SetProcs(cfg.ParallelSpeculativeProcesses)
 
 	var (
-		receipts        types.Receipts
-		header          = block.Header()
-		blockHash       = block.Hash()
-		blockNumber     = block.Number()
-		allLogs         []*types.Log
-		usedGas         = new(uint64)
-		metadata        bool
-		firehoseContext = firehose.MaybeSyncContext()
+		header      = block.Header()
+		blockHash   = block.Hash()
+		blockNumber = block.Number()
+		allLogs     []*types.Log
+		usedGas     = new(uint64)
+		metadata    bool
 	)
 
 	if firehoseContext.Enabled() {
@@ -312,6 +327,12 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
+		txFirehoseContext := firehoseContext
+		if txFirehoseContext.Enabled() {
+			// Use 256 KiB of memory for each task, we there is 500 tx in a block, it allocate straight 131.07 MiB of memory which is reasonable
+			txFirehoseContext = firehose.NewSpeculativeExecutionContext(256 * 1024)
+		}
+
 		msg, err := tx.AsMessage(types.MakeSigner(p.config, header.Number), header.BaseFee)
 		if err != nil {
 			log.Error("error creating message", "err", err)
@@ -346,7 +367,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 				dependencies:      deps[i],
 				coinbase:          coinbase,
 				blockContext:      blockContext,
-				firehoseContext:   firehoseContext,
+				txFirehoseContext: txFirehoseContext,
 			}
 
 			tasks = append(tasks, task)
@@ -372,7 +393,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 				dependencies:      nil,
 				coinbase:          coinbase,
 				blockContext:      blockContext,
-				firehoseContext:   firehoseContext,
+				txFirehoseContext: txFirehoseContext,
 			}
 
 			tasks = append(tasks, task)
@@ -425,6 +446,16 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 
 	if err != nil {
 		return nil, nil, 0, err
+	}
+
+	// Finalize block is a bit special since it can be enabled without the full firehose sync.
+	// As such, if firehose is enabled, we log it and us the firehose context. Otherwise if
+	// block progress is enabled.
+	if firehoseContext.Enabled() {
+		firehoseContext.FinalizeBlock(block)
+		finalizedSent = true
+	} else if firehose.BlockProgressEnabled {
+		firehose.SyncContext().FinalizeBlock(block)
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)

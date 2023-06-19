@@ -58,16 +58,15 @@ func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, engine consen
 // Process returns the receipts and logs accumulated during the process and
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
-func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config, interruptCtx context.Context) (types.Receipts, []*types.Log, uint64, error) {
+func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config, interruptCtx context.Context, firehoseContext *firehose.Context) (types.Receipts, []*types.Log, uint64, error) {
 	var (
-		receipts        types.Receipts
-		usedGas         = new(uint64)
-		header          = block.Header()
-		blockHash       = block.Hash()
-		blockNumber     = block.Number()
-		allLogs         []*types.Log
-		gp              = new(GasPool).AddGas(block.GasLimit())
-		firehoseContext = firehose.MaybeSyncContext()
+		receipts    types.Receipts
+		usedGas     = new(uint64)
+		header      = block.Header()
+		blockHash   = block.Hash()
+		blockNumber = block.Number()
+		allLogs     []*types.Log
+		gp          = new(GasPool).AddGas(block.GasLimit())
 	)
 
 	if firehoseContext.Enabled() {
@@ -82,6 +81,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg, firehoseContext)
 	txFirehoseContext := firehoseContext
 	if txFirehoseContext.Enabled() {
+		// 5 MiB should hold enough for all transaction and it's re-used for all transactions so shouldn't be a big deal for the memory
 		txFirehoseContext = firehose.NewSpeculativeExecutionContext(5 * 1024 * 1024)
 	}
 
