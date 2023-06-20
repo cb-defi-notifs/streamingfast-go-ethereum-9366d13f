@@ -88,10 +88,12 @@ type ExecutionTask struct {
 	// first 2 element in dependencies -> transaction index, and flag representing if delay is allowed or not
 	//                                       (0 -> delay is not allowed, 1 -> delay is allowed)
 	// next k elements in dependencies -> transaction indexes on which transaction i is dependent on
-	dependencies      []int
-	coinbase          common.Address
-	blockContext      vm.BlockContext
-	txFirehoseContext *firehose.Context
+	dependencies []int
+	coinbase     common.Address
+	blockContext vm.BlockContext
+
+	blockFirehoseContext *firehose.Context
+	txFirehoseContext    *firehose.Context
 }
 
 func (task *ExecutionTask) Execute(mvh *blockstm.MVHashMap, incarnation int) (err error) {
@@ -268,7 +270,7 @@ func (task *ExecutionTask) Settle() {
 
 	if task.txFirehoseContext.Enabled() {
 		task.txFirehoseContext.EndTransaction(receipt)
-		firehose.MaybeSyncContext().FlushTransaction(task.txFirehoseContext)
+		task.blockFirehoseContext.FlushTransaction(task.txFirehoseContext)
 	}
 
 	*task.receipts = append(*task.receipts, receipt)
@@ -286,11 +288,6 @@ var parallelizabilityTimer = metrics.NewRegisteredTimer("block/parallelizability
 // transactions failed to execute due to insufficient gas it will return an error.
 // nolint:gocognit
 func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg vm.Config, interruptCtx context.Context, firehoseContext *firehose.Context) (receipts types.Receipts, logs []*types.Log, gasUsed uint64, err error) {
-	finalizedSent := false
-	defer func() {
-		firehose.ReportToUser("Parallel execution terminated with finalized sent? %t, error? %s", finalizedSent, err)
-	}()
-
 	blockstm.SetProcs(cfg.ParallelSpeculativeProcesses)
 
 	var (
@@ -347,53 +344,55 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 
 		if len(header.TxDependency) != len(block.Transactions()) {
 			task := &ExecutionTask{
-				msg:               msg,
-				config:            p.config,
-				gasLimit:          block.GasLimit(),
-				blockNumber:       blockNumber,
-				blockHash:         blockHash,
-				tx:                tx,
-				index:             i,
-				cleanStateDB:      cleansdb,
-				finalStateDB:      statedb,
-				blockChain:        p.bc,
-				header:            header,
-				evmConfig:         cfg,
-				shouldDelayFeeCal: &shouldDelayFeeCal,
-				sender:            msg.From(),
-				totalUsedGas:      usedGas,
-				receipts:          &receipts,
-				allLogs:           &allLogs,
-				dependencies:      deps[i],
-				coinbase:          coinbase,
-				blockContext:      blockContext,
-				txFirehoseContext: txFirehoseContext,
+				msg:                  msg,
+				config:               p.config,
+				gasLimit:             block.GasLimit(),
+				blockNumber:          blockNumber,
+				blockHash:            blockHash,
+				tx:                   tx,
+				index:                i,
+				cleanStateDB:         cleansdb,
+				finalStateDB:         statedb,
+				blockChain:           p.bc,
+				header:               header,
+				evmConfig:            cfg,
+				shouldDelayFeeCal:    &shouldDelayFeeCal,
+				sender:               msg.From(),
+				totalUsedGas:         usedGas,
+				receipts:             &receipts,
+				allLogs:              &allLogs,
+				dependencies:         deps[i],
+				coinbase:             coinbase,
+				blockContext:         blockContext,
+				blockFirehoseContext: firehoseContext,
+				txFirehoseContext:    txFirehoseContext,
 			}
 
 			tasks = append(tasks, task)
 		} else {
 			task := &ExecutionTask{
-				msg:               msg,
-				config:            p.config,
-				gasLimit:          block.GasLimit(),
-				blockNumber:       blockNumber,
-				blockHash:         blockHash,
-				tx:                tx,
-				index:             i,
-				cleanStateDB:      cleansdb,
-				finalStateDB:      statedb,
-				blockChain:        p.bc,
-				header:            header,
-				evmConfig:         cfg,
-				shouldDelayFeeCal: &shouldDelayFeeCal,
-				sender:            msg.From(),
-				totalUsedGas:      usedGas,
-				receipts:          &receipts,
-				allLogs:           &allLogs,
-				dependencies:      nil,
-				coinbase:          coinbase,
-				blockContext:      blockContext,
-				txFirehoseContext: txFirehoseContext,
+				msg:                  msg,
+				config:               p.config,
+				gasLimit:             block.GasLimit(),
+				blockNumber:          blockNumber,
+				blockHash:            blockHash,
+				tx:                   tx,
+				index:                i,
+				cleanStateDB:         cleansdb,
+				finalStateDB:         statedb,
+				blockChain:           p.bc,
+				header:               header,
+				evmConfig:            cfg,
+				shouldDelayFeeCal:    &shouldDelayFeeCal,
+				sender:               msg.From(),
+				totalUsedGas:         usedGas,
+				receipts:             &receipts,
+				allLogs:              &allLogs,
+				dependencies:         nil,
+				coinbase:             coinbase,
+				blockContext:         blockContext,
+				blockFirehoseContext: firehoseContext,
+				txFirehoseContext:    txFirehoseContext,
 			}
 
 			tasks = append(tasks, task)

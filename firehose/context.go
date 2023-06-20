@@ -1,6 +1,7 @@
 package firehose
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -117,7 +118,7 @@ func NewSpeculativeExecutionContext(initialAllocationInBytes int) *Context {
 }
 
 func (ctx *Context) Enabled() bool {
-	return ctx != nil
+	return ctx != nil && Enabled
 }
 
 func (ctx *Context) FirehoseLog() []byte {
@@ -184,6 +185,18 @@ func (ctx *Context) EndBlock(block *types.Block, totalDifficulty *big.Int) {
 			"totalDifficulty": (*hexutil.Big)(totalDifficulty),
 		}),
 	)
+}
+
+// FlushBlock flushes the accumulated context's printer to "stdout" and reset's the
+// context. If the printer is not a ToBufferPrinter, this is a no-op.
+func (ctx *Context) FlushBlock() {
+	if ctx == nil || !Enabled {
+		return
+	}
+
+	if v, ok := ctx.printer.(*ToBufferPrinter); ok {
+		syncContext.printer.Write(v.buffer.Bytes())
+	}
 
 	ctx.exitBlock()
 }
@@ -377,8 +390,7 @@ func (ctx *Context) FlushTransaction(txContext *Context) {
 		ctx.flushTxLock.Lock()
 		defer ctx.flushTxLock.Unlock()
 
-		fmt.Print(v.buffer.String())
-
+		ctx.printer.Write(v.buffer.Bytes())
 		v.Reset()
 	}
 
