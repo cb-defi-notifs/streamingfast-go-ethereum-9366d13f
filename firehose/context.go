@@ -1,7 +1,6 @@
 package firehose
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"

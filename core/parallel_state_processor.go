@@ -452,7 +452,6 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	// block progress is enabled.
 	if firehoseContext.Enabled() {
 		firehoseContext.FinalizeBlock(block)
-		finalizedSent = true
 	} else if firehose.BlockProgressEnabled {
 		firehose.SyncContext().FinalizeBlock(block)
 	}
