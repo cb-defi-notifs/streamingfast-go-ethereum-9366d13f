@@ -8,10 +8,12 @@ import (
 	"io"
 	"io/ioutil"
 	"math/big"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type Printer interface {
@@ -65,7 +67,7 @@ func (p *ToBufferPrinter) Disabled() bool {
 }
 
 func (p *ToBufferPrinter) Print(input ...string) {
-	p.buffer.WriteString("DMLOG " + strings.Join(input, " ") + "\n")
+	p.buffer.WriteString("FIRE " + strings.Join(input, " ") + "\n")
 }
 
 func (p *ToBufferPrinter) Buffer() *bytes.Buffer {
@@ -119,4 +121,62 @@ func JSON(in interface{}) string {
 	}
 
 	return string(out)
+}
+
+func ReportHeaderComparisonResult(actual *types.Header, expected *types.Header) {
+	reportToUser("There is a mismatch between Firehose genesis block and actual chain's stored genesis block, the actual genesis")
+	reportToUser("block's hash field extracted from Geth's database does not fit with hash of genesis block generated")
+	reportToUser("from Firehose determined genesis config, you might need to provide the correct 'genesis.json' file")
+	reportToUser("via --firehose-genesis-file")
+	reportToUser("")
+	reportToUser("Comparison of the actual Firehose recomputed genesis block <> expected Geth genesis block")
+
+	compareAddress := fieldComparisonReporter(func(x interface{}) string { return x.(common.Address).String() })
+	compareHash := fieldComparisonReporter(func(x interface{}) string { return x.(common.Hash).String() })
+	compareUint64 := fieldComparisonReporter(func(x interface{}) string { return strconv.FormatUint(x.(uint64), 10) })
+	compareBytes := fieldComparisonReporter(func(x interface{}) string { return hex.EncodeToString(x.([]byte)) })
+	compareBigInt := fieldComparisonReporter(func(x interface{}) string {
+		if x == nil || x.(*big.Int) == nil {
+			return "<nil>"
+		} else {
+			return x.(*big.Int).String()
+		}
+	})
+
+	compareHash("Hash", actual.Hash(), expected.Hash())
+	compareUint64("Number", actual.Number.Uint64(), expected.Number.Uint64())
+	compareHash("ParentHash", actual.ParentHash, expected.ParentHash)
+	compareHash("UncleHash", actual.UncleHash, expected.UncleHash)
+	compareAddress("Coinbase", actual.Coinbase, expected.Coinbase)
+	compareHash("Root", actual.Root, expected.Root)
+	compareHash("TxHash", actual.TxHash, expected.TxHash)
+	compareHash("ReceiptHash", actual.ReceiptHash, expected.ReceiptHash)
+	compareBytes("Bloom", actual.Bloom[:], expected.Bloom[:])
+	compareBigInt("Difficulty", actual.Difficulty, expected.Difficulty)
+	compareUint64("GasLimit", actual.GasLimit, expected.GasLimit)
+	compareUint64("GasUsed", actual.GasUsed, expected.GasUsed)
+	compareUint64("Time", actual.Time, expected.Time)
+	compareBytes("Extra", actual.Extra, expected.Extra)
+	compareHash("MixDigest", actual.MixDigest, expected.MixDigest)
+	compareUint64("Nonce", actual.Nonce.Uint64(), expected.Nonce.Uint64())
+
+	reportToUser("")
+}
+
+func fieldComparisonReporter(toString func(x interface{}) string) func(field string, actual interface{}, expected interface{}) {
+	return func(field string, actual interface{}, expected interface{}) {
+		resolvedActual := toString(actual)
+		resolvedExpected := toString(expected)
+
+		sign := "!="
+		if resolvedActual == resolvedExpected {
+			sign = "=="
+		}
+
+		reportToUser("%s [(actual) %s %s %s (expected)]", field, resolvedActual, sign, resolvedExpected)
+	}
+}
+
+func reportToUser(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
 }
