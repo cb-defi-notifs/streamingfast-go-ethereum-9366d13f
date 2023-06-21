@@ -56,6 +56,8 @@ var (
 	lubanUpgrade = make(map[string]*Upgrade)
 
 	platoUpgrade = make(map[string]*Upgrade)
+
+	latestUpgrade = platoUpgrade
 )
 
 func init() {
@@ -696,6 +698,8 @@ func init() {
 			},
 		},
 	}
+
+	latestUpgrade[defaultNet] = latestUpgrade[rialtoNet]
 }
 
 func UpgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, statedb *state.StateDB, firehoseContext *firehose.Context) {

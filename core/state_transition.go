@@ -361,14 +361,15 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		st.refundGas(params.RefundQuotientEIP3529)
 	}
 
+	effectiveTip := st.gasPrice
+	if rules.IsLondon {
+		effectiveTip = cmath.BigMin(st.gasTipCap, new(big.Int).Sub(st.gasFeeCap, st.evm.Context.BaseFee))
+	}
+
 	// consensus engine is parlia
 	if st.evm.ChainConfig().Parlia != nil {
-		st.state.AddBalance(consensus.SystemAddress, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), st.gasPrice), false, st.firehoseContext, firehose.BalanceChangeReason("reward_transaction_fee"))
+		st.state.AddBalance(consensus.SystemAddress, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), effectiveTip), false, st.firehoseContext, firehose.BalanceChangeReason("reward_transaction_fee"))
 	} else {
-		effectiveTip := st.gasPrice
-		if rules.IsLondon {
-			effectiveTip = cmath.BigMin(st.gasTipCap, new(big.Int).Sub(st.gasFeeCap, st.evm.Context.BaseFee))
-		}
 		st.state.AddBalance(st.evm.Context.Coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), effectiveTip), false, st.firehoseContext, firehose.BalanceChangeReason("reward_transaction_fee"))
 	}
 
