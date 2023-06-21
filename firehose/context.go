@@ -172,21 +172,10 @@ func (ctx *Context) EndBlock(block *types.Block, finalBlockHeader *types.Header,
 		"totalDifficulty": (*hexutil.Big)(totalDifficulty),
 	}
 
-	// BSC engine, when hard-fork enabling finality is not active, returns the genesis block
-	// of the chain as the currently finalized block. In Firehose context, we don't want to
-	// have the genesis block being the last final block as it would keep all blocks ever
-	// produced in memory.
-	//
-	// So if finalized header is the genesis block, skip emitting a finalized event to firehose
-
-	// For now, we disable emitting finalized block event to Firehose because the LIB can go
-	// backward, waiting details on https://github.com/bnb-chain/bsc/issues/1683 to decide a
-	// path forward.
-	_ = finalBlockHeader
-	// if finalBlockHeader != nil && finalBlockHeader.Number.Uint64() != 0 {
-	// 	endData["finalizedBlockNum"] = (*hexutil.Big)(finalBlockHeader.Number)
-	// 	endData["finalizedBlockHash"] = finalBlockHeader.Hash()
-	// }
+	if finalBlockHeader != nil && finalBlockHeader.Number.Uint64() != 0 {
+		endData["finalizedBlockNum"] = (*hexutil.Big)(finalBlockHeader.Number)
+		endData["finalizedBlockHash"] = finalBlockHeader.Hash()
+	}
 
 	ctx.printer.Print("END_BLOCK",
 		Uint64(block.NumberU64()),

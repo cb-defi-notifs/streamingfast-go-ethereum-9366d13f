@@ -1995,7 +1995,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 				firehoseContext.FinalizeBlock(block)
 				ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 				td := new(big.Int).Add(block.Difficulty(), ptd)
-				firehoseContext.EndBlock(block, bc.getFinalizedHeader(block.Header()), td)
+				firehoseContext.EndBlock(block, bc.CurrentFinalBlock(), td)
 			}
 
 			stats.processed++
@@ -2079,7 +2079,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 			// Calculate the total difficulty of the block
 			ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 			td := new(big.Int).Add(block.Difficulty(), ptd)
-			firehoseContext.EndBlock(block, bc.getFinalizedHeader(block.Header()), td)
+			firehoseContext.EndBlock(block, bc.CurrentFinalBlock(), td)
 		}
 
 		bc.cacheReceipts(block.Hash(), receipts)
