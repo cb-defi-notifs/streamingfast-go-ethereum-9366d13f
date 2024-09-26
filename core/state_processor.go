@@ -74,8 +74,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	txFirehoseContext := firehoseContext
 	if txFirehoseContext.Enabled() {
-		// 5 MiB should hold enough for all transaction and it's re-used for all transactions so shouldn't be a big deal for the memory
-		txFirehoseContext = firehose.NewSpeculativeExecutionContext(5 * 1024 * 1024)
+		txFirehoseContext = firehose.NewSpeculativeExecutionContextWithBuffer(firehose.TxSyncBuffer)
 	}
 
 	// Iterate over and process the individual transactions

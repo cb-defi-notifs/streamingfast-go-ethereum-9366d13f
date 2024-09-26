@@ -1701,6 +1701,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 				ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 				td := new(big.Int).Add(block.Difficulty(), ptd)
 				firehoseContext.EndBlock(block, td)
+				firehoseContext.FlushBlock()
 			}
 
 			stats.processed++
@@ -1739,8 +1740,13 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			}
 		}
 		// Process block using the parent state as reference point
+		firehoseContext := firehose.NoOpContext
+		if firehose.Enabled {
+			firehoseContext = firehose.NewSpeculativeExecutionContextWithBuffer(firehose.BlockSyncBuffer)
+		}
+
 		substart := time.Now()
-		receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig, firehose.MaybeSyncContext())
+		receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig, firehoseContext)
 		if err != nil {
 			bc.reportBlock(block, receipts, err)
 			atomic.StoreUint32(&followupInterrupt, 1)
@@ -1763,13 +1769,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 		if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
 			bc.reportBlock(block, receipts, err)
 			atomic.StoreUint32(&followupInterrupt, 1)
-			if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() {
-				firehoseContext.CancelBlock(block, err)
-			}
 			return it.index, err
 		}
 
-		if firehoseContext := firehose.MaybeSyncContext(); firehoseContext.Enabled() {
+		if firehoseContext.Enabled() {
 			// Calculate the total difficulty of the block
 			ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 			td := new(big.Int).Add(block.Difficulty(), ptd)
@@ -1792,6 +1795,11 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			return it.index, err
 		}
 		atomic.StoreUint32(&followupInterrupt, 1)
+
+		if firehoseContext.Enabled() {
+			// This is last point where there is no more an early return due to an error, we flush here
+			firehoseContext.FlushBlock()
+		}
 
 		// Update the metrics touched during block commit
 		accountCommitTimer.Update(statedb.AccountCommits) // Account commits are complete, we can mark them

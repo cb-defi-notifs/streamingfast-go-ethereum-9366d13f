@@ -35,10 +35,11 @@ func (s *ExtendedStack) MustPeek() string {
 // BalanceChangeReason denotes a reason why a given balance change occurred.
 //
 // **Important!** For easier extraction of all possible `BalanceChangeReason`, ensure you always
-//                define valid value using the type wrapper so it matches the extraction
-//                regex `BalanceChangeReason\("[a-z0-9_]+"\)`. All other values that should not
-//                be matched can be defined here using `var X BalanceChangeReason = "something"`
-//                since does not match the above regexp.
+//
+//	define valid value using the type wrapper so it matches the extraction
+//	regex `BalanceChangeReason\("[a-z0-9_]+"\)`. All other values that should not
+//	be matched can be defined here using `var X BalanceChangeReason = "something"`
+//	since does not match the above regexp.
 type BalanceChangeReason string
 
 // IgnoredBalanceChangeReason **On purposely defined using a different syntax, check `BalanceChangeReason` type doc above**
@@ -47,10 +48,11 @@ var IgnoredBalanceChangeReason BalanceChangeReason = "ignored"
 // GasChangeReason denotes a reason why a given gas cost was incurred for an operation.
 //
 // **Important!** For easier extraction of all possible `GasChangeReason`, ensure you always
-//                define valid value using the type wrapper so it matches the extraction
-//                regex `GasChangeReason\("[a-z0-9_]+"\)`. All other values that should not
-//                be matched can be defined here using `var X GasChangeReason = "something"`
-//                since does not match the above regexp.
+//
+//	define valid value using the type wrapper so it matches the extraction
+//	regex `GasChangeReason\("[a-z0-9_]+"\)`. All other values that should not
+//	be matched can be defined here using `var X GasChangeReason = "something"`
+//	since does not match the above regexp.
 type GasChangeReason string
 
 // RefundAfterExecutionGasChangeReason to be used for all gas refund operation
